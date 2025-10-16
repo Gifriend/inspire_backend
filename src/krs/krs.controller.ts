@@ -48,4 +48,14 @@ export class KrsController {
     if (req.user.role !== 'DOSEN') throw new ForbiddenException('Akses ditolak');
     return this.krsService.rejectKrs(req.user.id, +krsId, catatan);
   }
+
+  @Post('cancel/:krsId')
+  async cancelKrs(
+    @Req() req: AuthRequest, 
+    @Param('krsId') krsId: number, 
+    @Body('catatan') catatan: string
+  ) {
+    if (req.user.role !== 'DOSEN') throw new ForbiddenException('Akses ditolak');
+    return this.krsService.cancelKrs(req.user.id, +krsId, catatan);
+  }
 }

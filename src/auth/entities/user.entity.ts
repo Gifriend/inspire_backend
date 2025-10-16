@@ -1,4 +1,4 @@
-import { KRS } from 'src/krs/entites/krs.entity';
+import { KRS } from '../../krs/entites/krs.entity';
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 
 export enum Role {

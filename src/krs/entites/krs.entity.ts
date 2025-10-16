@@ -1,5 +1,5 @@
-// src/krs/entities/krs.entity.ts
-import { User } from 'src/auth/entities/user.entity';
+
+import { User } from '../../auth/entities/user.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,8 +8,6 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToMany,
-  JoinTable,
 } from 'typeorm';
 
 export enum StatusKRS {
@@ -34,10 +32,10 @@ export class KRS {
   totalSKS: number;
 
   @Column({ type: 'timestamp', nullable: true })
-  tanggalPengajuan: Date;
+  tanggalPengajuan: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
-  tanggalPersetujuan: Date;
+  tanggalPersetujuan: Date | null;
 
   @Column({ nullable: true })
   catatanDosen: string;

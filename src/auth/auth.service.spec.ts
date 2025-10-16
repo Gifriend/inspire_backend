@@ -3,10 +3,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import { AuthService } from './auth.service';
-import { Gender, Role, Status, User } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { Gender, Role, Status, User } from './entities/user.entity';
 
 jest.mock('bcrypt', () => ({
   hash: jest.fn(async (password: string, salt: number) => `hashed-${password}`),
