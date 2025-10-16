@@ -13,3 +13,259 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role {
+  MAHASISWA
+  DOSEN
+}
+
+enum Gender {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum Status {
+  AKTIF
+  CUTI
+  NON_AKTIF
+  LULUS
+  DROP_OUT
+}
+
+enum StatusMataKuliah {
+  AKTIF
+  NON_AKTIF
+}
+
+enum StatusKRS {
+  DRAFT
+  DIAJUKAN
+  DISETUJUI
+  DITOLAK
+}
+
+enum StatusNilai {
+  BELUM_ADA
+  SUDAH_ADA
+}
+
+model Fakultas {
+  id    Int    @id @default(autoincrement())
+  name  String
+  kode  String @unique
+  dekan String?
+  
+  prodi Prodi[]
+  users User[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Prodi {
+  id         Int      @id @default(autoincrement())
+  name       String
+  kode       String   @unique
+  jenjang    String   // S1, S2, S3, D3, D4
+  kaprodi    String?
+  fakultasId Int
+  
+  fakultas     Fakultas     @relation(fields: [fakultasId], references: [id], onDelete: Cascade)
+  users        User[]
+  mataKuliah   Matakuliah[]
+  kurikulum    Kurikulum[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id          Int     @id @default(autoincrement())
+  name        String
+  nim         String? @unique // Nullable untuk dosen/admin
+  nip         String? @unique // Untuk dosen/staff
+  email       String  @unique
+  role        Role
+  gender      Gender
+  password    String
+  photo       String?
+  status      Status
+  alamat      String?
+  telepon     String?
+  tanggalLahir DateTime?
+  fakultasId  Int
+  prodiId     Int?
+  
+  fakultas    Fakultas @relation(fields: [fakultasId], references: [id])
+  prodi       Prodi?   @relation(fields: [prodiId], references: [id])
+  
+  // Relasi untuk mahasiswa
+  krs         KRS[]
+  nilai       Nilai[]
+  
+  // Relasi untuk dosen
+  mengajarMataKuliah KelasPerkuliahan[]
+  pembimbingSkripsi  Skripsi[]         @relation("PembimbingUtama")
+  coPembimbingSkripsi Skripsi[]        @relation("CoPembimbing")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  Skripsi Skripsi[]
+}
+
+model Kurikulum {
+  id       Int    @id @default(autoincrement())
+  name     String
+  tahun    Int
+  status   StatusMataKuliah @default(AKTIF)
+  prodiId  Int
+  
+  prodi      Prodi        @relation(fields: [prodiId], references: [id])
+  mataKuliah Matakuliah[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Matakuliah {
+  id           Int      @id @default(autoincrement())
+  name         String
+  kode         String   @unique
+  sks          Int
+  semester     Int      // 1-14
+  jenisMK      String   // Wajib, Pilihan
+  deskripsi    String?
+  silabus      String?
+  status       StatusMataKuliah @default(AKTIF)
+  prodiId      Int
+  kurikulumId  Int
+  
+  prodi          Prodi              @relation(fields: [prodiId], references: [id])
+  kurikulum      Kurikulum          @relation(fields: [kurikulumId], references: [id])
+  prasyarat      PrasyaratMK[]      @relation("MataKuliahUtama")
+  syaratUntuk    PrasyaratMK[]      @relation("MataKuliahPrasyarat")
+  kelasPerkuliahan KelasPerkuliahan[]
+  nilai          Nilai[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PrasyaratMK {
+  id                    Int @id @default(autoincrement())
+  mataKuliahId         Int
+  mataKuliahPrasyaratId Int
+  
+  mataKuliah         Matakuliah @relation("MataKuliahUtama", fields: [mataKuliahId], references: [id], onDelete: Cascade)
+  mataKuliahPrasyarat Matakuliah @relation("MataKuliahPrasyarat", fields: [mataKuliahPrasyaratId], references: [id], onDelete: Cascade)
+  
+  @@unique([mataKuliahId, mataKuliahPrasyaratId])
+}
+
+model KelasPerkuliahan {
+  id           Int    @id @default(autoincrement())
+  kode         String @unique
+  nama         String
+  kapasitas    Int
+  ruangan      String?
+  jadwal       String? // JSON string untuk jadwal mingguan
+  semester     String  // "2024/2025 Ganjil"
+  mataKuliahId Int
+  dosenId      Int
+  
+  mataKuliah Matakuliah @relation(fields: [mataKuliahId], references: [id])
+  dosen      User       @relation(fields: [dosenId], references: [id])
+  krs        KRS[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KRS {
+  id                   Int        @id @default(autoincrement())
+  semester             String     // "2024/2025 Ganjil"
+  status               StatusKRS  @default(DRAFT)
+  totalSKS            Int        @default(0)
+  tanggalPengajuan    DateTime?
+  tanggalPersetujuan  DateTime?
+  catatanDosen        String?
+  mahasiswaId         Int
+  
+  mahasiswa           User                @relation(fields: [mahasiswaId], references: [id])
+  kelasPerkuliahan    KelasPerkuliahan[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([mahasiswaId, semester])
+}
+
+model Nilai {
+  id                   Int          @id @default(autoincrement())
+  nilaiTugas          Float?       @default(0)
+  nilaiUTS            Float?       @default(0)
+  nilaiUAS            Float?       @default(0)
+  nilaiAkhir          Float?       @default(0)
+  nilaiHuruf          String?      // A, B+, B, C+, C, D, E
+  indeksNilai         Float?       // 4.0, 3.5, 3.0, dst
+  status              StatusNilai  @default(BELUM_ADA)
+  semester            String       // "2024/2025 Ganjil"
+  mahasiswaId         Int
+  mataKuliahId        Int
+  
+  mahasiswa    User       @relation(fields: [mahasiswaId], references: [id])
+  mataKuliah   Matakuliah @relation(fields: [mataKuliahId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([mahasiswaId, mataKuliahId, semester])
+}
+
+model Skripsi {
+  id                 Int      @id @default(autoincrement())
+  judul              String
+  abstrak            String?
+  statusPengajuan    String   @default("DRAFT") // DRAFT, DIAJUKAN, DISETUJUI, DITOLAK, SELESAI
+  tanggalPengajuan   DateTime?
+  tanggalSidang      DateTime?
+  nilaiAkhir         Float?
+  mahasiswaId        Int      @unique
+  pembimbingUtamaId  Int
+  coPembimbingId     Int?
+  
+  mahasiswa        User @relation(fields: [mahasiswaId], references: [id])
+  pembimbingUtama  User @relation("PembimbingUtama", fields: [pembimbingUtamaId], references: [id])
+  coPembimbing     User? @relation("CoPembimbing", fields: [coPembimbingId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Model tambahan untuk sistem akademik yang lebih lengkap
+model Semester {
+  id           Int      @id @default(autoincrement())
+  nama         String   @unique // "2024/2025 Ganjil"
+  tahunAkademik String  // "2024/2025"
+  jenis        String   // "Ganjil" atau "Genap"
+  tanggalMulai DateTime
+  tanggalSelesai DateTime
+  status       String   @default("TIDAK_AKTIF") // AKTIF, TIDAK_AKTIF
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Pengumuman {
+  id       Int      @id @default(autoincrement())
+  judul    String
+  isi      String
+  kategori String   // AKADEMIK, KEMAHASISWAAN, UMUM
+  prioritas String  @default("NORMAL") // TINGGI, NORMAL, RENDAH
+  target   String   // SEMUA, MAHASISWA, DOSEN, 
+  aktif    Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

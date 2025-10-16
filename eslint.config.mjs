@@ -5,6 +5,13 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
+  // {
+  //   extends: [
+  //      'airbnb',
+  //   'plugin:react/recommended',
+  //   'plugin:prettier/recommended',
+  //   ]
+  // },
   {
     ignores: ['eslint.config.mjs'],
   },
