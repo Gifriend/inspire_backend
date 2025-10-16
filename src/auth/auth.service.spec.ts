@@ -8,6 +8,13 @@ import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 
+jest.mock('bcrypt', () => ({
+  hash: jest.fn(async (password: string, salt: number) => `hashed-${password}`),
+  compare: jest.fn(
+    async (plain: string, hashed: string) => hashed === `hashed-${plain}`,
+  ),
+}));
+
 describe('AuthService', () => {
   let service: AuthService;
   let userRepository: Repository<User>;
@@ -56,38 +63,50 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('should login successfully with NIM - ONLY TOKENS', async () => {
-    const loginDto: LoginDto = { nim: '12345', password: 'password123' };
-    const hashedPassword = await bcrypt.hash('password123', 10);
-    
-    mockUserRepository.findOne.mockResolvedValue({ ...mockUser, password: hashedPassword });
-    mockJwtService.sign
-      .mockReturnValueOnce('access_token')
-      .mockReturnValueOnce('refresh_token');
+      const loginDto: LoginDto = { nim: '12345', password: 'password123' };
+      const hashedPassword = await bcrypt.hash('password123', 10);
 
-    const result = await service.login(loginDto);
+      mockUserRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        password: hashedPassword,
+      });
+      mockJwtService.sign
+        .mockReturnValueOnce('access_token')
+        .mockReturnValueOnce('refresh_token');
 
-    expect(mockUserRepository.findOne).toHaveBeenCalledWith({ nim: '12345' });
-    expect(bcrypt.compare).toHaveBeenCalledWith('password123', hashedPassword);
-    
-    // ✅ FIX 3: HANYA TOKEN - NO USER!
-    expect(result).toEqual({
-      access_token: 'access_token',
-      refresh_token: 'refresh_token',
+      const result = await service.login(loginDto);
+
+      // ✅ Sesuaikan ekspektasi sesuai implementasi
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({
+        where: { nim: '12345' },
+      });
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'password123',
+        hashedPassword,
+      );
+
+      expect(result).toEqual({
+        access_token: 'access_token',
+        refresh_token: 'refresh_token',
+      });
     });
-  });
 
     it('should throw UnauthorizedException for wrong NIM', async () => {
       const loginDto: LoginDto = { nim: '99999', password: 'wrong' };
       mockUserRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.login(loginDto)).rejects.toThrow('NIM atau password salah');
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'NIM atau password salah',
+      );
     });
 
     it('should throw UnauthorizedException for wrong password', async () => {
       const loginDto: LoginDto = { nim: '12345', password: 'wrong' };
       mockUserRepository.findOne.mockResolvedValue(mockUser);
 
-      await expect(service.login(loginDto)).rejects.toThrow('NIM atau password salah');
+      await expect(service.login(loginDto)).rejects.toThrow(
+        'NIM atau password salah',
+      );
     });
   });
 
@@ -108,9 +127,13 @@ describe('AuthService', () => {
 
     it('should throw for invalid refresh token', async () => {
       const refreshTokenDto = { refreshToken: 'invalid' };
-      mockJwtService.verify.mockImplementation(() => { throw new Error(); });
+      mockJwtService.verify.mockImplementation(() => {
+        throw new Error();
+      });
 
-      await expect(service.refresh(refreshTokenDto)).rejects.toThrow('Refresh token tidak valid');
+      await expect(service.refresh(refreshTokenDto)).rejects.toThrow(
+        'Refresh token tidak valid',
+      );
     });
   });
 
@@ -128,14 +151,14 @@ describe('AuthService', () => {
       };
 
       const hashedPassword = await bcrypt.hash('password123', 10);
-      mockUserRepository.create.mockReturnValue({ 
-        ...createUserDto, 
-        password: hashedPassword 
+      mockUserRepository.create.mockReturnValue({
+        ...createUserDto,
+        password: hashedPassword,
       });
-      mockUserRepository.save.mockResolvedValue({ 
-        id: 2, 
-        ...createUserDto, 
-        password: hashedPassword 
+      mockUserRepository.save.mockResolvedValue({
+        id: 2,
+        ...createUserDto,
+        password: hashedPassword,
       });
 
       const result = await service.create(createUserDto);
@@ -168,7 +191,10 @@ describe('AuthService', () => {
     it('should update user without password', async () => {
       const updateDto = { name: 'Updated Name' };
       mockUserRepository.update.mockResolvedValue(undefined);
-      mockUserRepository.findOne.mockResolvedValue({ ...mockUser, name: 'Updated Name' });
+      mockUserRepository.findOne.mockResolvedValue({
+        ...mockUser,
+        name: 'Updated Name',
+      });
 
       const result = await service.update(1, updateDto);
       expect(result).not.toBeNull();
