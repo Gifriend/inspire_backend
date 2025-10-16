@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { KRS } from 'src/krs/entites/krs.entity';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 
 export enum Role {
   MAHASISWA = 'MAHASISWA',
@@ -58,6 +59,9 @@ export class User {
 
   @Column({ type: 'date', nullable: true })
   tanggalLahir: Date;
+
+  @OneToMany(() => KRS, (krs) => krs.mahasiswa)
+  krs: KRS[];
 
   @CreateDateColumn()
   createdAt: Date;
