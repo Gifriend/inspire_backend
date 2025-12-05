@@ -112,6 +112,8 @@ model User {
   updatedAt DateTime @updatedAt
 
   Skripsi Skripsi[]
+
+  Pengumuman Pengumuman[]
 }
 
 model Kurikulum {
@@ -180,6 +182,8 @@ model KelasPerkuliahan {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  Pengumuman Pengumuman[]
 }
 
 model KRS {
@@ -258,14 +262,18 @@ model Semester {
 }
 
 model Pengumuman {
-  id       Int      @id @default(autoincrement())
-  judul    String
-  isi      String
-  kategori String   // AKADEMIK, KEMAHASISWAAN, UMUM
-  prioritas String  @default("NORMAL") // TINGGI, NORMAL, RENDAH
-  target   String   // SEMUA, MAHASISWA, DOSEN, 
-  aktif    Boolean  @default(true)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 Int      @id @default(autoincrement())
+  judul              String
+  isi                String
+  kategori           String   // AKADEMIK, KEMAHASISWAAN, UMUM
+  prioritas          String   @default("NORMAL") // TINGGI, NORMAL, RENDAH
+  aktif              Boolean  @default(true)
+  dosenId            Int
+  kelasPerkuliahanId Int?
+
+  dosen              User               @relation(fields: [dosenId], references: [id])
+  kelasPerkuliahan   KelasPerkuliahan?  @relation(fields: [kelasPerkuliahanId], references: [id])
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

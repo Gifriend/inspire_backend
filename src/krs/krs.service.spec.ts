@@ -124,7 +124,6 @@ describe('KrsService', () => {
     });
   });
 
-  // ✅ CANCEL KRS - TEST LENGKAP
   describe('cancelKrs', () => {
     it('should cancel approved KRS back to DRAFT successfully', async () => {
       mockUserRepo.findOne.mockResolvedValue({ id: 2, role: 'DOSEN' });
