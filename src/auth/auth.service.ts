@@ -1,9 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../prisma/prisma.service'; // Pastikan path import benar
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -12,21 +10,24 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(User)
-    private usersRepository: Repository<User>,
+    private prisma: PrismaService, // Ganti Repository dengan PrismaService
     private jwtService: JwtService,
   ) {}
 
   async login(loginDto: LoginDto) {
     const { nim, password } = loginDto;
     
-    const user = await this.usersRepository.findOne({ where: { nim } });
+    // TypeORM: findOne({ where: { nim } })
+    // Prisma: findUnique({ where: { nim } }) (karena nim @unique)
+    const user = await this.prisma.user.findUnique({ 
+      where: { nim } 
+    });
     
     if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new UnauthorizedException('NIM atau password salah');
     }
 
-    // ✅ PAYLOAD LENGKAP - User data diambil dari sini!
+    // ✅ PAYLOAD LENGKAP
     const payload = { 
       sub: user.id, 
       nim: user.nim, 
@@ -38,7 +39,6 @@ export class AuthService {
     const access_token = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refresh_token = this.jwtService.sign(payload, { expiresIn: '7d' });
 
-    // ✅ HANYA TOKEN - NO USER OBJECT!
     return {
       access_token,
       refresh_token,
@@ -48,13 +48,27 @@ export class AuthService {
   async refresh(refreshTokenDto: RefreshTokenDto) {
     try {
       const payload = this.jwtService.verify(refreshTokenDto.refreshToken);
-      const user = await this.usersRepository.findOne({ where: { id: payload.sub } });
+      
+      // Prisma findUnique by ID
+      const user = await this.prisma.user.findUnique({ 
+        where: { id: payload.sub } 
+      });
       
       if (!user) {
         throw new UnauthorizedException('Refresh token tidak valid');
       }
 
-      const newAccessToken = this.jwtService.sign(payload); // Same payload!
+      // Re-sign token dengan payload yang sama
+      // Note: Sebaiknya buat ulang payload bersih dari user db terbaru
+      const newPayload = { 
+        sub: user.id, 
+        nim: user.nim, 
+        name: user.name,
+        email: user.email,
+        role: user.role 
+      };
+
+      const newAccessToken = this.jwtService.sign(newPayload, { expiresIn: '15m' });
 
       return {
         access_token: newAccessToken,
@@ -67,30 +81,40 @@ export class AuthService {
 
   async create(createUserDto: CreateUserDto) {
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = this.usersRepository.create({
-      ...createUserDto,
-      password: hashedPassword,
+    
+    // Prisma Create
+    // Pastikan field di DTO sesuai dengan schema.prisma User model
+    // Jika ada field enum (Role/Gender), pastikan dikirim dengan benar atau di-cast
+    return this.prisma.user.create({
+      data: {
+        ...createUserDto,
+        password: hashedPassword,
+        // Default values seperti status, role, dll biasanya sudah dihandle
+        // oleh @default() di schema.prisma atau harus diset di sini jika wajib
+      },
     });
-    return this.usersRepository.save(user);
   }
 
   async findAll() {
-    return this.usersRepository.find();
+    return this.prisma.user.findMany();
   }
 
   async findOne(id: number) {
-    return this.usersRepository.findOne({ where: { id } });
+    return this.prisma.user.findUnique({ where: { id } });
   }
 
   async update(id: number, updateUserDto: UpdateUserDto) {
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
-    await this.usersRepository.update(id, updateUserDto);
-    return this.findOne(id);
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateUserDto,
+    });
   }
 
   async remove(id: number) {
-    await this.usersRepository.delete(id);
+    return this.prisma.user.delete({ where: { id } });
   }
 }

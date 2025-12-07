@@ -2,218 +2,155 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../auth/entities/user.entity';
-import { KRS, StatusKRS } from './entites/krs.entity';
+import { PrismaService } from '../prisma/prisma.service';
+import { StatusKRS } from '@prisma/client'; // Import Enum dari Prisma Client
 import { AddClassDto } from './dto/add-class.dto';
 import { SubmitKrsDto } from './dto/submit-krs.dto';
 
 @Injectable()
 export class KrsService {
-  constructor(
-    @InjectRepository(KRS)
-    private krsRepository: Repository<KRS>,
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  async getOrCreateKrs(mahasiswaId: number, semester: string): Promise<KRS> {
-    let krs = await this.krsRepository.findOne({
-      where: { mahasiswaId, semester },
-    });
-
-    if (!krs) {
-      krs = this.krsRepository.create({
-        semester,
-        status: StatusKRS.DRAFT,
-        totalSKS: 0,
-        mahasiswaId,
-        kelasTerpilih: [],
-      });
-      krs = await this.krsRepository.save(krs); //  Return saved
-    }
-
-    return krs;
-  }
-
-  async addClassToKrs(mahasiswaId: number, dto: AddClassDto): Promise<KRS> {
-    const user = await this.userRepository.findOne({
-      where: { id: mahasiswaId },
-    });
-    if (!user || user.role !== 'MAHASISWA') {
-      throw new ForbiddenException('Hanya mahasiswa yang bisa menambah kelas');
-    }
-
-    const krs = await this.getOrCreateKrs(mahasiswaId, dto.semester);
-
-    if (krs.status !== StatusKRS.DRAFT) {
-
-      throw new BadRequestException(
-        'KRS sudah diajukan, tidak bisa tambah kelas',
-      );
-    }
-
-    // check if class already added
-    const alreadyExists = krs.kelasTerpilih?.some(
-      (kelas) => kelas.kelasId === dto.kelasId, 
-    );
-    if (alreadyExists) {
-      throw new BadRequestException('Kelas sudah terdaftar');
-    }
-
-    // check class full (simulation)
-    const enrolledCount = Math.floor(Math.random() * dto.kapasitas);
-    if (enrolledCount >= dto.kapasitas) {
-
-      throw new BadRequestException('Kelas sudah penuh');
-    }
-
-    // Tambah kelas ke array
-    krs.kelasTerpilih = [
-      ...(krs.kelasTerpilih || []),
-      {
-        kelasId: dto.kelasId, 
-        kodeMataKuliah: dto.kodeMataKuliah, 
-        namaMataKuliah: dto.namaMataKuliah,
-        sks: dto.sks, 
-        dosen: dto.dosen, 
-        kapasitas: dto.kapasitas, 
+  // Helper: Ambil KRS aktif atau buat baru (DRAFT)
+  async getOrCreateKrs(mahasiswaId: number, semester: string) {
+    // Cek apakah sudah ada KRS
+    let krs = await this.prisma.kRS.findUnique({
+      where: {
+        mahasiswaId_semester: { // Composite key dari schema prisma
+          mahasiswaId,
+          semester,
+        },
       },
-    ];
-    krs.totalSKS += dto.sks;
+      include: {
+        kelasPerkuliahan: {
+          include: { mataKuliah: true, dosen: true }
+        }
+      }
+    });
 
-    await this.krsRepository.save(krs);
+    // Jika belum ada, buat baru
+    if (!krs) {
+      krs = await this.prisma.kRS.create({
+        data: {
+          mahasiswaId,
+          semester,
+          status: StatusKRS.DRAFT,
+          totalSKS: 0,
+        },
+        include: {
+          kelasPerkuliahan: {
+            include: { mataKuliah: true, dosen: true }
+          }
+        }
+      });
+    }
+
     return krs;
   }
 
-  async submitKrs(mahasiswaId: number, dto: SubmitKrsDto): Promise<KRS> {
-    const user = await this.userRepository.findOne({
-      where: { id: mahasiswaId },
-    });
+  async addClassToKrs(mahasiswaId: number, dto: AddClassDto) {
+    // 1. Validasi Mahasiswa
+    const user = await this.prisma.user.findUnique({ where: { id: mahasiswaId } });
     if (!user || user.role !== 'MAHASISWA') {
-      throw new ForbiddenException('Hanya mahasiswa yang bisa submit KRS');
+      throw new ForbiddenException('Hanya mahasiswa yang bisa tambah kelas');
     }
 
+    // 2. Ambil Kelas yang mau diambil untuk cek SKS & Kapasitas
+    const targetKelas = await this.prisma.kelasPerkuliahan.findUnique({
+      where: { id: dto.kelasId }, // Asumsi DTO kirim ID (Int) bukan string
+      include: { mataKuliah: true }
+    });
+
+    if (!targetKelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    // 3. Ambil KRS Draf
     const krs = await this.getOrCreateKrs(mahasiswaId, dto.semester);
 
     if (krs.status !== StatusKRS.DRAFT) {
-
-      throw new BadRequestException('KRS sudah diajukan');
+      throw new BadRequestException('KRS sudah diajukan/disetujui, tidak bisa tambah kelas');
     }
 
-    if (!krs.kelasTerpilih || krs.kelasTerpilih.length === 0) {
-      throw new BadRequestException('Tambahkan minimal 1 mata kuliah');
+    // 4. Cek Duplikasi (Apakah kelas ini sudah diambil?)
+    const alreadyExists = krs.kelasPerkuliahan.some(k => k.id === dto.kelasId);
+    if (alreadyExists) {
+      throw new BadRequestException('Kelas sudah terdaftar di KRS Anda');
     }
 
-    krs.status = StatusKRS.DIAJUKAN; 
-    krs.tanggalPengajuan = new Date();
-    await this.krsRepository.save(krs);
+    // 5. Update KRS: Connect Kelas & Update Total SKS
+    // Prisma otomatis menangani join table (many-to-many)
+    const updatedKrs = await this.prisma.kRS.update({
+      where: { id: krs.id },
+      data: {
+        totalSKS: { increment: targetKelas.mataKuliah.sks },
+        kelasPerkuliahan: {
+          connect: { id: dto.kelasId }
+        }
+      },
+      include: { kelasPerkuliahan: true }
+    });
 
-    return krs;
+    return updatedKrs;
   }
 
-  async getKrs(mahasiswaId: number, semester: string): Promise<KRS | null> {
-    //  Allow null
-    const user = await this.userRepository.findOne({
-      where: { id: mahasiswaId },
-    });
-    if (!user || user.role !== 'MAHASISWA') {
-      throw new ForbiddenException('Hanya mahasiswa yang bisa lihat KRS');
+  async submitKrs(mahasiswaId: number, dto: SubmitKrsDto) {
+    const krs = await this.getOrCreateKrs(mahasiswaId, dto.semester);
+
+    if (krs.status !== StatusKRS.DRAFT) {
+      throw new BadRequestException('KRS sudah diajukan sebelumnya');
     }
 
-    return this.krsRepository.findOne({
-      where: { mahasiswaId, semester },
-    }); 
+    if (krs.kelasPerkuliahan.length === 0) {
+      throw new BadRequestException('Pilih minimal 1 mata kuliah sebelum submit');
+    }
+
+    return this.prisma.kRS.update({
+      where: { id: krs.id },
+      data: {
+        status: StatusKRS.DIAJUKAN,
+        tanggalPengajuan: new Date(),
+      }
+    });
   }
 
-  async approveKrs(
-    dosenId: number,
-    krsId: number,
-    catatan?: string,
-  ): Promise<KRS> {
-    const dosen = await this.userRepository.findOne({
-      where: { id: dosenId },
-    });
-    if (!dosen || dosen.role !== 'DOSEN') {
-      throw new ForbiddenException('Hanya dosen yang bisa approve');
-    }
-
-    const krs = await this.krsRepository.findOne({
-      where: { id: krsId, status: StatusKRS.DIAJUKAN }, 
-    });
-
-    if (!krs) {
-      throw new BadRequestException(
-        'KRS tidak ditemukan atau bukan status DIAJUKAN',
-      );
-    }
-
-    krs.status = StatusKRS.DISETUJUI;
-    krs.tanggalPersetujuan = new Date();
-    krs.catatanDosen = catatan || 'Disetujui';
-    await this.krsRepository.save(krs);
-
-    return krs;
+  async getKrs(mahasiswaId: number, semester: string) {
+    return this.getOrCreateKrs(mahasiswaId, semester);
   }
 
-  async rejectKrs(
-    dosenId: number,
-    krsId: number,
-    catatan: string,
-  ): Promise<KRS> {
-    const dosen = await this.userRepository.findOne({
-      where: { id: dosenId },
+  // --- FITUR DOSEN ---
+
+  async approveKrs(dosenId: number, krsId: number, catatan?: string) {
+    // Validasi Dosen (Optional jika sudah dihandle Guard)
+    
+    return this.prisma.kRS.update({
+      where: { id: krsId },
+      data: {
+        status: StatusKRS.DISETUJUI,
+        tanggalPersetujuan: new Date(),
+        catatanDosen: catatan || 'Disetujui',
+      }
     });
-    if (!dosen || dosen.role !== 'DOSEN') {
-      throw new ForbiddenException('Hanya dosen yang bisa reject');
-    }
-
-    const krs = await this.krsRepository.findOne({
-      where: { id: krsId, status: StatusKRS.DIAJUKAN },
-    });
-
-    if (!krs) {
-      throw new BadRequestException(
-        'KRS tidak ditemukan atau bukan status DIAJUKAN',
-      );
-    }
-
-    krs.status = StatusKRS.DITOLAK;
-    krs.catatanDosen = catatan;
-    await this.krsRepository.save(krs);
-
-    return krs;
   }
 
-  async cancelKrs(
-    dosenId: number,
-    krsId: number,
-    catatan: string,
-  ): Promise<KRS> {
-    const dosen = await this.userRepository.findOne({
-      where: { id: dosenId },
+  async rejectKrs(dosenId: number, krsId: number, catatan: string) {
+    return this.prisma.kRS.update({
+      where: { id: krsId },
+      data: {
+        status: StatusKRS.DITOLAK,
+        catatanDosen: catatan,
+      }
     });
-    if (!dosen || dosen.role !== 'DOSEN') {
-      throw new ForbiddenException('Hanya dosen yang bisa membatalkan KRS');
-    }
+  }
 
-    const krs = await this.krsRepository.findOne({
-      where: { id: krsId, status: StatusKRS.DISETUJUI },
+  async cancelKrs(dosenId: number, krsId: number, catatan: string) {
+    return this.prisma.kRS.update({
+      where: { id: krsId },
+      data: {
+        status: StatusKRS.DRAFT,
+        catatanDosen: catatan,
+        tanggalPersetujuan: null,
+      }
     });
-
-    if (!krs) {
-      throw new BadRequestException(
-        'KRS tidak ditemukan atau bukan status DISETUJUI',
-      );
-    }
-
-    krs.status = StatusKRS.DRAFT; //  KEMBALI DRAFT
-    krs.catatanDosen = catatan;
-    krs.tanggalPersetujuan = null; // Reset approval
-    await this.krsRepository.save(krs);
-
-    return krs;
   }
 }

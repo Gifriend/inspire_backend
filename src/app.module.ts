@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { PengumumanModule } from './pengumuman/pengumuman.module';
 import { KrsModule } from './krs/krs.module';
 import { AuthModule } from './auth/auth.module';
+import { ElearningModule } from './elearning/elearning.dto';
+import { AcademicModule } from './academic/academic.module';
 
 @Module({
-  imports: [PengumumanModule, KrsModule, AuthModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [PengumumanModule, KrsModule, AuthModule, ElearningModule, AcademicModule],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}

@@ -1,25 +1,25 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { User } from './entities/user.entity';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PassportModule } from '@nestjs/passport';
+import { PrismaService } from '../prisma/prisma.service'; // Import Prisma
 import { JwtStrategy } from './strategy/jwt.strategy';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
-      }),
-      inject: [ConfigService],
+    ConfigModule,
+    PassportModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'portalinspiremobile', 
+      signOptions: { expiresIn: '15m' },
     }),
+    // ❌ HAPUS BARIS INI: TypeOrmModule.forFeature([User]),
   ],
-  providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
+  // ✅ Tambahkan PrismaService di providers
+  providers: [AuthService, JwtStrategy, PrismaService], 
+  exports: [AuthService],
 })
 export class AuthModule {}

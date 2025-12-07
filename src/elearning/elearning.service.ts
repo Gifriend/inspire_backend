@@ -6,7 +6,7 @@ import {
   CreateAssignmentDto, 
   SubmitAssignmentDto, 
   CreateQuizDto 
-} from './elearning.dto';
+} from './dto/elearning.dto';
 
 // Catatan: Di production, sebaiknya gunakan PrismaService dengan Dependency Injection
 const prisma = new PrismaClient();

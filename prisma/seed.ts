@@ -1,131 +1,156 @@
-import { DataSource } from 'typeorm';
+import { PrismaClient, Role, Gender, Status, StatusNilai, StatusKRS } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { Gender, Role, Status, User } from 'src/auth/entities/user.entity';
 
-// Konfigurasi koneksi database
-const dataSource = new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT ?? '5432', 10),
-  username: process.env.DB_USERNAME || 'your_username',
-  password: process.env.DB_PASSWORD || 'your_password',
-  database: process.env.DB_NAME || 'your_database',
-  entities: [User],
-  synchronize: true, // Hati-hati: ini akan menyesuaikan skema database
-});
+const prisma = new PrismaClient();
 
-async function seed() {
-  try {
-    // Inisialisasi koneksi database
-    await dataSource.initialize();
-    console.log('Database connected successfully');
+async function main() {
+  console.log('🌱 Start seeding...');
 
-    const userRepository = dataSource.getRepository(User);
+  // 1. DATA MASTER: FAKULTAS & PRODI
+  const ft = await prisma.fakultas.upsert({
+    where: { kode: 'FT' },
+    update: {},
+    create: { name: 'Fakultas Teknik', kode: 'FT', dekan: 'Dr. Teknik' },
+  });
 
-    // Data dummy untuk User
-    const users = [
-      {
-        name: 'Ahmad Santoso',
-        nim: '123456789',
-        nip: undefined,
-        email: 'ahmad.santoso@univ.ac.id',
-        role: Role.MAHASISWA,
-        gender: Gender.LAKI_LAKI,
-        password: await bcrypt.hash('password123', 10),
-        photo: 'https://example.com/photos/ahmad.jpg',
-        status: Status.AKTIF,
-        alamat: 'Jl. Merdeka No. 10, Jakarta',
-        telepon: '081234567890',
-        tanggalLahir: new Date('2000-05-15'),
-      },
-      {
-        name: 'Siti Nurhaliza',
-        nim: '987654321',
-        nip: undefined,
-        email: 'siti.nurhaliza@univ.ac.id',
-        role: Role.MAHASISWA,
-        gender: Gender.PEREMPUAN,
-        password: await bcrypt.hash('password123', 10),
-        photo: 'https://example.com/photos/siti.jpg',
-        status: Status.AKTIF,
-        alamat: 'Jl. Sudirman No. 25, Bandung',
-        telepon: '082345678901',
-        tanggalLahir: new Date('2001-08-20'),
-      },
-      {
-        name: 'Dr. Budi Hartono',
-        nim: undefined,
-        nip: 'D001',
-        email: 'budi.hartono@univ.ac.id',
-        role: Role.DOSEN,
-        gender: Gender.LAKI_LAKI,
-        password: await bcrypt.hash('dosen123', 10),
-        photo: 'https://example.com/photos/budi.jpg',
-        status: Status.AKTIF,
-        alamat: 'Jl. Gatot Subroto No. 5, Yogyakarta',
-        telepon: '083456789012',
-        tanggalLahir: new Date('1975-03-10'),
-      },
-      {
-        name: 'Prof. Anita Sari',
-        nim: undefined,
-        nip: 'D002',
-        email: 'anita.sari@univ.ac.id',
-        role: Role.DOSEN,
-        gender: Gender.PEREMPUAN,
-        password: await bcrypt.hash('dosen123', 10),
-        photo: 'https://example.com/photos/anita.jpg',
-        status: Status.AKTIF,
-        alamat: 'Jl. Diponegoro No. 15, Surabaya',
-        telepon: '084567890123',
-        tanggalLahir: new Date('1968-11-25'),
-      },
-      {
-        name: 'Rudi Kurniawan',
-        nim: '456789123',
-        nip: undefined,
-        email: 'rudi.kurniawan@univ.ac.id',
-        role: Role.MAHASISWA,
-        gender: Gender.LAKI_LAKI,
-        password: await bcrypt.hash('password123', 10),
-        photo: null,
-        status: Status.CUTI,
-        alamat: 'Jl. Veteran No. 30, Medan',
-        telepon: '085678901234',
-        tanggalLahir: new Date('1999-12-01'),
-      },
-    ];
+  const ifProdi = await prisma.prodi.upsert({
+    where: { kode: 'IF' },
+    update: {},
+    create: { name: 'Informatika', kode: 'IF', jenjang: 'S1', fakultasId: ft.id },
+  });
 
-    // Simpan data dummy ke database
-    for (const user of users) {
-      const existingUser = await userRepository.findOne({
-        where: [
-          { email: user.email },
-          ...(user.nim ? [{ nim: user.nim }] : []),
-          ...(user.nip ? [{ nip: user.nip }] : [])
-        ],
-      });
-      if (!existingUser) {
-        // Ensure 'nim', 'nip', and 'photo' are undefined instead of null
-        const userToSave = {
-          ...user,
-          nim: user.nim ?? undefined,
-          nip: user.nip ?? undefined,
-          photo: user.photo ?? undefined,
-        };
-        await userRepository.save(userToSave);
-        console.log(`User ${user.name} seeded successfully`);
-      } else {
-        console.log(`User ${user.name} already exists, skipping...`);
+  // 2. DATA USER (Mahasiswa & Dosen)
+  const password = await bcrypt.hash('123456', 10);
+
+  const dosen = await prisma.user.upsert({
+    where: { email: 'dosen@univ.ac.id' },
+    update: {},
+    create: {
+      name: 'Dr. Budi Hartono',
+      email: 'dosen@univ.ac.id',
+      nip: '19800101',
+      role: Role.DOSEN,
+      gender: Gender.LAKI_LAKI,
+      password,
+      status: Status.AKTIF,
+      fakultasId: ft.id,
+      prodiId: ifProdi.id,
+    },
+  });
+
+  const mahasiswa = await prisma.user.upsert({
+    where: { email: 'mhs@univ.ac.id' },
+    update: {},
+    create: {
+      name: 'Ahmad Mahasiswa',
+      email: 'mhs@univ.ac.id',
+      nim: '20021101', // Gunakan NIM ini untuk Login nanti
+      role: Role.MAHASISWA,
+      gender: Gender.LAKI_LAKI,
+      password,
+      status: Status.AKTIF,
+      fakultasId: ft.id,
+      prodiId: ifProdi.id,
+    },
+  });
+
+  // 3. DATA AKADEMIK (Kurikulum & MK)
+  const kurikulum = await prisma.kurikulum.create({
+    data: { name: 'Kurikulum 2024', tahun: 2024, prodiId: ifProdi.id }
+  });
+
+  const mkWeb = await prisma.matakuliah.create({
+    data: {
+      name: 'Pemrograman Web', kode: 'IF201', sks: 3, semester: 3, 
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id
+    }
+  });
+
+  const mkAlpro = await prisma.matakuliah.create({
+    data: {
+      name: 'Algoritma Pemrograman', kode: 'IF101', sks: 3, semester: 1, 
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id
+    }
+  });
+
+  // 4. KELAS PERKULIAHAN
+  const kelasWeb = await prisma.kelasPerkuliahan.create({
+    data: {
+      nama: 'Pemrograman Web A', kode: 'WEB-A-2024', kapasitas: 40, 
+      semester: '2024/2025 Ganjil', mataKuliahId: mkWeb.id, dosenId: dosen.id
+    }
+  });
+
+  // 5. KRS & NILAI (PENTING UNTUK TESTING KHS)
+  // Mahasiswa mengambil kelas
+  await prisma.kRS.create({
+    data: {
+      mahasiswaId: mahasiswa.id,
+      semester: '2024/2025 Ganjil',
+      status: StatusKRS.DISETUJUI,
+      totalSKS: 6,
+      kelasPerkuliahan: { connect: [{ id: kelasWeb.id }] }
+    }
+  });
+
+  // Input Nilai (Agar IPS tidak 0)
+  // Nilai MK 1: A (4.0)
+  await prisma.nilai.create({
+    data: {
+      mahasiswaId: mahasiswa.id,
+      mataKuliahId: mkWeb.id,
+      semester: '2024/2025 Ganjil',
+      nilaiHuruf: 'A',
+      indeksNilai: 4.0,
+      nilaiAkhir: 85,
+      status: StatusNilai.SUDAH_ADA
+    }
+  });
+
+  // Nilai MK 2: B (3.0)
+  await prisma.nilai.create({
+    data: {
+      mahasiswaId: mahasiswa.id,
+      mataKuliahId: mkAlpro.id,
+      semester: '2024/2025 Ganjil',
+      nilaiHuruf: 'B',
+      indeksNilai: 3.0,
+      nilaiAkhir: 75,
+      status: StatusNilai.SUDAH_ADA
+    }
+  });
+
+  // 6. DATA E-LEARNING
+  const session1 = await prisma.session.create({
+    data: {
+      title: 'Pertemuan 1: Pengenalan HTML',
+      weekNumber: 1,
+      kelasPerkuliahanId: kelasWeb.id,
+      materials: {
+        create: [
+          { title: 'Slide HTML', type: 'FILE', fileUrl: 'https://example.com/slide.pdf' },
+          { title: 'Video Tutorial', type: 'TEXT', content: 'Tonton video di Youtube...' }
+        ]
+      },
+      assignments: {
+        create: {
+          title: 'Tugas 1: Halaman Web Sederhana',
+          deadline: new Date(new Date().setDate(new Date().getDate() + 7)), // +7 hari
+        }
       }
     }
+  });
 
-    console.log('Seeding completed successfully');
-  } catch (error) {
-    console.error('Error during seeding:', error);
-  } finally {
-    // Tutup koneksi database
-    await dataSource.destroy();
-    console.log('Database connection closed');
-  }
+  console.log('✅ Seeding finished.');
+  console.log(`🔑 Test User: ${mahasiswa.email} / 123456`);
+  console.log(`🏫 Kelas ID untuk Testing E-Learning: ${kelasWeb.id}`);
 }
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
