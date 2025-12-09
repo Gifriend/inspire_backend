@@ -1,33 +1,32 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { KhsResponseDto } from './dto/academic.dto';
+import { KhsResponseDto } from './dto/academic.dto'; // Pastikan path ini sesuai
 
+// Setup Prisma (Sesuai kode Anda)
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 @Injectable()
 export class AcademicService {
   
-  // 1. GET KHS DATA (Untuk Tampilan UI)
+  // ==========================================
+  // 1. FITUR KHS (LAMA - TETAP ADA)
+  // ==========================================
   async getKhs(studentId: number, semester: string): Promise<KhsResponseDto> {
-    // Ambil data nilai berdasarkan semester
     const rawNilai = await prisma.nilai.findMany({
       where: {
         mahasiswaId: studentId,
         semester: semester,
-        status: 'SUDAH_ADA' // Hanya ambil yang sudah dinilai
+        status: 'SUDAH_ADA'
       },
       include: {
         mataKuliah: true,
-        mahasiswa: {
-          include: { prodi: true }
-        }
+        mahasiswa: { include: { prodi: true } }
       }
     });
 
     if (!rawNilai.length) {
-      // Return kosong jika belum ada nilai, jangan error agar UI tetap jalan
       const mhs = await prisma.user.findUnique({ 
         where: { id: studentId },
         include: { prodi: true }
@@ -37,7 +36,7 @@ export class AcademicService {
         totalSks: 0,
         totalBobot: 0,
         ips: 0.00,
-        ipk: 0.00, // Implementasi IPK butuh query semua semester
+        ipk: 0.00,
         mahasiswa: {
           nama: mhs?.name || '-',
           nim: mhs?.nim || '-',
@@ -47,13 +46,12 @@ export class AcademicService {
       };
     }
 
-    // Hitung IPS
     let totalSks = 0;
     let totalBobot = 0;
 
     const formattedNilai = rawNilai.map(item => {
       const sks = item.mataKuliah.sks;
-      const indeks = item.indeksNilai || 0; // 4.0, 3.0
+      const indeks = item.indeksNilai || 0; 
       
       totalSks += sks;
       totalBobot += (sks * indeks);
@@ -62,22 +60,20 @@ export class AcademicService {
         kodeMk: item.mataKuliah.kode,
         namaMk: item.mataKuliah.name,
         sks: sks,
-        nilaiHuruf: item.nilaiHuruf || 'T', // Tunda jika null
+        nilaiHuruf: item.nilaiHuruf || 'T',
         indeks: indeks
       };
     });
 
     const ips = totalSks > 0 ? (totalBobot / totalSks) : 0;
-
-    // Ambil data profil mahasiswa dari record pertama
     const studentInfo = rawNilai[0].mahasiswa;
 
     return {
       semester,
       totalSks,
       totalBobot,
-      ips: parseFloat(ips.toFixed(2)), // Bulatkan 2 desimal
-      ipk: 3.50, // Dummy: Logic IPK butuh query agregat seluruh semester
+      ips: parseFloat(ips.toFixed(2)),
+      ipk: 3.50, 
       mahasiswa: {
         nama: studentInfo.name,
         nim: studentInfo.nim ?? '-',
@@ -87,11 +83,9 @@ export class AcademicService {
     };
   }
 
-  // 2. GENERATE HTML REPORT (Untuk Download PDF)
   async generateKhsHtml(studentId: number, semester: string): Promise<string> {
     const data = await this.getKhs(studentId, semester);
 
-    // Template HTML Sederhana untuk Laporan
     const rows = data.nilai.map((n, index) => `
       <tr>
         <td style="text-align: center;">${index + 1}</td>
@@ -113,7 +107,6 @@ export class AcademicService {
           h2, h3 { text-align: center; margin: 0; }
           .header { margin-bottom: 30px; }
           .info-table { width: 100%; margin-bottom: 20px; }
-          .info-table td { padding: 5px; }
           .nilai-table { width: 100%; border-collapse: collapse; }
           .nilai-table th, .nilai-table td { border: 1px solid black; padding: 8px; font-size: 14px; }
           .footer { margin-top: 50px; text-align: right; }
@@ -124,33 +117,17 @@ export class AcademicService {
           <h2>KARTU HASIL STUDI (KHS)</h2>
           <h3>UNIVERSITAS SAM RATULANGI</h3>
         </div>
-
         <table class="info-table">
-          <tr>
-            <td width="15%">Nama</td><td>: <b>${data.mahasiswa.nama}</b></td>
-            <td width="15%">Semester</td><td>: ${data.semester}</td>
-          </tr>
-          <tr>
-            <td>NIM</td><td>: ${data.mahasiswa.nim}</td>
-            <td>Prodi</td><td>: ${data.mahasiswa.prodi}</td>
-          </tr>
+          <tr><td width="15%">Nama</td><td>: <b>${data.mahasiswa.nama}</b></td><td width="15%">Semester</td><td>: ${data.semester}</td></tr>
+          <tr><td>NIM</td><td>: ${data.mahasiswa.nim}</td><td>Prodi</td><td>: ${data.mahasiswa.prodi}</td></tr>
         </table>
-
         <table class="nilai-table">
           <thead>
             <tr style="background-color: #f0f0f0;">
-              <th width="5%">No</th>
-              <th width="15%">Kode</th>
-              <th>Mata Kuliah</th>
-              <th width="10%">SKS</th>
-              <th width="10%">Nilai</th>
-              <th width="10%">Bobot</th>
-              <th width="10%">Mutu</th>
+              <th>No</th><th>Kode</th><th>Mata Kuliah</th><th>SKS</th><th>Nilai</th><th>Bobot</th><th>Mutu</th>
             </tr>
           </thead>
-          <tbody>
-            ${rows}
-          </tbody>
+          <tbody>${rows}</tbody>
           <tfoot>
             <tr>
               <td colspan="3" style="text-align: right; font-weight: bold;">Total</td>
@@ -160,57 +137,38 @@ export class AcademicService {
             </tr>
           </tfoot>
         </table>
-
-        <div style="margin-top: 20px;">
-          <p><b>Indeks Prestasi Semester (IPS): ${data.ips}</b></p>
-        </div>
-
-        <div class="footer">
-          <p>Manado, ${new Date().toLocaleDateString('id-ID')}</p>
-          <p>Mengetahui,</p>
-          <br><br><br>
-          <p><b>Dosen Pembimbing Akademik</b></p>
-        </div>
+        <p><b>Indeks Prestasi Semester (IPS): ${data.ips}</b></p>
       </body>
       </html>
     `;
   }
 
+  // ==========================================
+  // 2. FITUR TRANSKRIP (BARU - DENGAN HTML TABLE)
+  // ==========================================
+  
+  // Logic Pengambilan Data JSON (Sudah Benar)
   async getTranskrip(mahasiswaId: number) {
-    // 1. Ambil data mahasiswa
     const mahasiswa = await prisma.user.findUnique({
       where: { id: mahasiswaId },
-      include: {
-        prodi: true,
-        fakultas: true,
-      },
+      include: { prodi: true, fakultas: true },
     });
 
     if (!mahasiswa) throw new NotFoundException('Mahasiswa tidak ditemukan');
 
-    // 2. Ambil SEMUA nilai yang sudah ada (SUDAH_ADA)
     const allNilai = await prisma.nilai.findMany({
-      where: {
-        mahasiswaId: mahasiswaId,
-        status: 'SUDAH_ADA', // Hanya nilai yang sudah fix
-      },
-      include: {
-        mataKuliah: true, // Butuh data SKS dan Kode MK
-      },
-      orderBy: {
-        semester: 'asc', // Urutkan berdasarkan semester pengambilan
-      },
+      where: { mahasiswaId: mahasiswaId, status: 'SUDAH_ADA' },
+      include: { mataKuliah: true },
+      orderBy: { semester: 'asc' },
     });
 
-    // 3. LOGIKA FILTER NILAI TERBAIK (Best Grade Policy)
-    // Jika mahasiswa mengulang MK, kita hanya ambil nilai indeks tertinggi untuk IPK
     const bestGradesMap = new Map<string, any>();
 
     for (const record of allNilai) {
       const kodeMK = record.mataKuliah.kode;
       const existing = bestGradesMap.get(kodeMK);
-
-      // Jika belum ada, atau nilai sekarang LEBIH BESAR dari yang tersimpan
+      
+      // Ambil nilai terbaik (Indeks tertinggi)
       if (
         !existing ||
         (record.indeksNilai !== null &&
@@ -221,18 +179,16 @@ export class AcademicService {
           matakuliah: record.mataKuliah.name,
           sks: record.mataKuliah.sks,
           nilaiHuruf: record.nilaiHuruf,
-          indeks: record.indeksNilai, // 4.0, 3.0, dst
+          indeks: record.indeksNilai,
           semester: record.semester,
         });
       }
     }
 
-    // Konversi Map ke Array
     const transkripList = Array.from(bestGradesMap.values());
 
-    // 4. HITUNG IPK (Indeks Prestasi Kumulatif)
     let totalSKS = 0;
-    let totalBobot = 0; // SKS * Indeks
+    let totalBobot = 0;
 
     transkripList.forEach((item) => {
       totalSKS += item.sks;
@@ -241,7 +197,6 @@ export class AcademicService {
 
     const ipk = totalSKS > 0 ? (totalBobot / totalSKS).toFixed(2) : '0.00';
 
-    // 5. Return Data Rapih
     return {
       mahasiswa: {
         nama: mahasiswa.name,
@@ -255,15 +210,138 @@ export class AcademicService {
         ipk: ipk,
         predikat: this.getPredikat(parseFloat(ipk)),
       },
-      transkrip: transkripList.sort((a, b) => a.semester.localeCompare(b.semester)), // Urutkan display per semester
+      transkrip: transkripList.sort((a, b) => a.semester.localeCompare(b.semester)),
     };
   }
 
-  // Helper Predikat Kelulusan
+  // Helper Predikat
   private getPredikat(ipk: number): string {
     if (ipk >= 3.51) return 'Dengan Pujian (Cumlaude)';
     if (ipk >= 3.01) return 'Sangat Memuaskan';
     if (ipk >= 2.76) return 'Memuaskan';
     return 'Cukup';
+  }
+
+  // 3. GENERATE HTML REPORT UNTUK TRANSKRIP (BARU)
+  async generateTranskripHtml(mahasiswaId: number): Promise<string> {
+    const data = await this.getTranskrip(mahasiswaId);
+
+    // Generate baris tabel
+    const rows = data.transkrip.map((item, index) => {
+      const mutu = (item.sks * item.indeks).toFixed(2);
+      return `
+        <tr>
+          <td style="text-align: center;">${index + 1}</td>
+          <td>${item.kode}</td>
+          <td>${item.matakuliah}</td>
+          <td style="text-align: center;">${item.sks}</td>
+          <td style="text-align: center;">${item.nilaiHuruf}</td>
+          <td style="text-align: center;">${item.indeks}</td>
+          <td style="text-align: center;">${mutu}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Template HTML
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Transkrip Nilai - ${data.mahasiswa.nim}</title>
+        <style>
+          body { font-family: 'Times New Roman', serif; padding: 40px; color: #000; }
+          .header { text-align: center; margin-bottom: 40px; border-bottom: 3px double #000; padding-bottom: 20px; }
+          .header h2 { margin: 0; font-size: 20px; text-transform: uppercase; }
+          .header h3 { margin: 5px 0 0 0; font-size: 16px; font-weight: normal; }
+          
+          .info-section { width: 100%; margin-bottom: 20px; }
+          .info-section td { padding: 4px; vertical-align: top; }
+          
+          .table-nilai { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          .table-nilai th, .table-nilai td { border: 1px solid #000; padding: 6px 8px; font-size: 13px; }
+          .table-nilai th { background-color: #f4f4f4; text-align: center; font-weight: bold; }
+          
+          .summary { margin-top: 30px; border: 1px solid #000; padding: 15px; width: 50%; }
+          .summary p { margin: 5px 0; }
+          
+          .footer { margin-top: 60px; display: flex; justify-content: space-between; }
+          .signature { text-align: center; width: 200px; }
+        </style>
+      </head>
+      <body>
+      
+        <div class="header">
+          <h2>Kementerian Pendidikan, Kebudayaan, Riset, dan Teknologi</h2>
+          <h2>Universitas Sam Ratulangi</h2>
+          <h3>${data.mahasiswa.fakultas}</h3>
+          <h2 style="margin-top: 20px; text-decoration: underline;">TRANSKRIP AKADEMIK</h2>
+        </div>
+
+        <table class="info-section">
+          <tr>
+            <td width="150"><b>Nama Mahasiswa</b></td>
+            <td width="10">:</td>
+            <td>${data.mahasiswa.nama}</td>
+            
+            <td width="100"><b>Fakultas</b></td>
+            <td width="10">:</td>
+            <td>${data.mahasiswa.fakultas}</td>
+          </tr>
+          <tr>
+            <td><b>NIM</b></td>
+            <td>:</td>
+            <td>${data.mahasiswa.nim}</td>
+            
+            <td><b>Program Studi</b></td>
+            <td>:</td>
+            <td>${data.mahasiswa.prodi}</td>
+          </tr>
+        </table>
+
+        <table class="table-nilai">
+          <thead>
+            <tr>
+              <th width="5%">No</th>
+              <th width="15%">Kode MK</th>
+              <th>Mata Kuliah</th>
+              <th width="8%">SKS</th>
+              <th width="8%">Nilai</th>
+              <th width="8%">Bobot</th>
+              <th width="10%">Mutu</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" style="text-align: right; font-weight: bold;">Total</td>
+              <td style="text-align: center; font-weight: bold;">${data.statistik.totalSKS}</td>
+              <td colspan="3"></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="summary">
+          <p><b>Total SKS Lulus:</b> ${data.statistik.totalSKS}</p>
+          <p><b>Indeks Prestasi Kumulatif (IPK):</b> ${data.statistik.ipk}</p>
+          <p><b>Predikat Kelulusan:</b> ${data.statistik.predikat}</p>
+        </div>
+
+        <div class="footer">
+          <div class="signature"></div> <!-- Spacer kiri -->
+          <div class="signature">
+            <p>Manado, ${new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p>Wakil Dekan Bidang Akademik,</p>
+            <br><br><br><br>
+            <p><b>(Nama Pejabat)</b></p>
+            <p>NIP. ...........................</p>
+          </div>
+        </div>
+
+      </body>
+      </html>
+    `;
   }
 }

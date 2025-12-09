@@ -5,6 +5,7 @@ import {
   Res,
   Request,
   UseGuards,
+  Header,
 } from '@nestjs/common';
 import { AcademicService } from './academic.service';
 import { GetKhsDto } from './dto/academic.dto';
@@ -53,5 +54,11 @@ export class AcademicController {
     // Jika Dosen ingin lihat transkrip mahasiswa, logicnya beda (perlu param ID)
     // Di sini kita fokus untuk Mahasiswa melihat transkripnya sendiri
     return this.academicService.getTranskrip(user.id);
+  }
+
+  @Get('transkrip/download')
+  @Header('Content-Type', 'text/html') // Agar browser merender HTML
+  async downloadTranskrip(@CurrentUser() user: User) {
+    return this.academicService.generateTranskripHtml(user.id);
   }
 }
