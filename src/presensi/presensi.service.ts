@@ -1,0 +1,169 @@
+import { 
+  Injectable, 
+  BadRequestException, 
+  ForbiddenException, 
+  NotFoundException 
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreatePresensiDto, SubmitPresensiDto, ManualPresensiDto } from './dto/presensi.dto';
+import { User, SessionType, Role } from '@prisma/client';
+
+@Injectable()
+export class PresensiService {
+  constructor(private prisma: PrismaService) {}
+
+  // ============================================
+  // 1. GENERATE SESSION + TOKEN (DOSEN)
+  // ============================================
+  async createSession(dto: CreatePresensiDto, user: User) {
+    if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
+
+    // Validasi Logika Kelas/UAS (Sama seperti sebelumnya)
+    if (dto.type === SessionType.KELAS) {
+      if (!dto.kelasPerkuliahanId) throw new BadRequestException('ID Kelas wajib diisi');
+      
+      // Validasi Pemilik Kelas
+      if (user.role === Role.DOSEN) {
+        const kelas = await this.prisma.kelasPerkuliahan.findUnique({ where: { id: dto.kelasPerkuliahanId }});
+        if (!kelas || kelas.dosenId !== user.id) throw new ForbiddenException('Bukan kelas Anda.');
+      }
+
+      // Validasi Max 16
+      const count = await this.prisma.presensiSession.count({
+        where: { kelasPerkuliahanId: dto.kelasPerkuliahanId, type: SessionType.KELAS },
+      });
+      if (count >= 16) throw new BadRequestException('Maksimal 16 pertemuan.');
+    }
+
+    if (dto.type === SessionType.UAS) {
+      if (!dto.kelasPerkuliahanId) throw new BadRequestException('ID Kelas wajib diisi');
+      const exists = await this.prisma.presensiSession.findFirst({
+        where: { kelasPerkuliahanId: dto.kelasPerkuliahanId, type: SessionType.UAS }
+      });
+      if (exists) throw new BadRequestException('UAS sudah dibuat.');
+    }
+
+    // GENERATE TOKEN (8 HURUF BESAR & ANGKA)
+    const token = this.generateToken(8);
+
+    return this.prisma.presensiSession.create({
+      data: {
+        title: dto.title,
+        type: dto.type,
+        kelasPerkuliahanId: dto.kelasPerkuliahanId || null,
+        date: new Date(),
+        isOpen: true,
+        token: token, // Simpan token
+      },
+    });
+  }
+
+  // ============================================
+  // 2. SUBMIT VIA TOKEN (MAHASISWA)
+  // ============================================
+  async submitPresensi(dto: SubmitPresensiDto, mahasiswa: User) {
+    const session = await this.prisma.presensiSession.findUnique({
+      where: { id: dto.sessionId },
+    });
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan');
+    if (!session.isOpen) throw new BadRequestException('Sesi sudah ditutup.');
+
+    // VALIDASI TOKEN
+    if (session.token !== dto.token) {
+      throw new BadRequestException('Token presensi salah!');
+    }
+
+    // Validasi KRS & UAS Threshold
+    if (session.type !== SessionType.EVENT) {
+      const krs = await this.prisma.kRS.findFirst({
+        where: { 
+          mahasiswaId: mahasiswa.id, 
+          kelasPerkuliahanId: session.kelasPerkuliahanId,
+          status: 'DISETUJUI' 
+        }
+      });
+      if (!krs) throw new ForbiddenException('Anda tidak terdaftar di kelas ini.');
+
+        if (session.type === SessionType.UAS) {
+        if (session.kelasPerkuliahanId === null) {
+          throw new BadRequestException('ID Kelas tidak ditemukan untuk sesi UAS.');
+        }
+        const rate = await this.calculateAttendanceRate(session.kelasPerkuliahanId, mahasiswa.id);
+        if (rate < 80) throw new ForbiddenException(`Kehadiran ${rate.toFixed(1)}% (Min 80%).`);
+      }
+    }
+
+    return this.recordAttendance(session.id, mahasiswa.id, 'TOKEN');
+  }
+
+  // ============================================
+  // 3. INPUT MANUAL (DOSEN)
+  // ============================================
+  async manualPresensi(dto: ManualPresensiDto, dosen: User) {
+    const session = await this.prisma.presensiSession.findUnique({
+      where: { id: dto.sessionId },
+      include: { kelasPerkuliahan: true }
+    });
+
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan');
+
+    if (dosen.role === Role.DOSEN) {
+      if (session.kelasPerkuliahanId && session.kelasPerkuliahan?.dosenId !== dosen.id) {
+        throw new ForbiddenException('Anda tidak berhak melakukan presensi manual di kelas ini.');
+      }
+    }
+
+    const mahasiswa = await this.prisma.user.findUnique({ where: { id: dto.mahasiswaId }});
+    if (!mahasiswa || mahasiswa.role !== Role.MAHASISWA) {
+      throw new NotFoundException('Mahasiswa invalid.');
+    }
+
+    // Upsert: Tandai method sebagai "MANUAL"
+    return this.prisma.presensiRecord.upsert({
+      where: {
+        sessionId_mahasiswaId: { sessionId: dto.sessionId, mahasiswaId: dto.mahasiswaId }
+      },
+      update: { method: 'MANUAL', createdAt: new Date() },
+      create: { sessionId: dto.sessionId, mahasiswaId: dto.mahasiswaId, method: 'MANUAL' }
+    });
+  }
+
+  // --- Helpers ---
+
+  // Helper Generate Token
+  private generateToken(length: number): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  private async recordAttendance(sessionId: number, mahasiswaId: number, method: string) {
+    const existing = await this.prisma.presensiRecord.findUnique({
+      where: { sessionId_mahasiswaId: { sessionId, mahasiswaId } },
+    });
+    if (existing) throw new BadRequestException('Sudah presensi.');
+
+    return this.prisma.presensiRecord.create({
+      data: { sessionId, mahasiswaId, method },
+    });
+  }
+
+  private async calculateAttendanceRate(kelasId: number, mhsId: number): Promise<number> {
+    const totalSessions = await this.prisma.presensiSession.count({
+      where: { kelasPerkuliahanId: kelasId, type: SessionType.KELAS },
+    });
+    if (totalSessions === 0) return 100;
+
+    const presentCount = await this.prisma.presensiRecord.count({
+      where: {
+        mahasiswaId: mhsId,
+        session: { kelasPerkuliahanId: kelasId, type: SessionType.KELAS },
+      },
+    });
+
+    return (presentCount / totalSessions) * 100;
+  }
+}

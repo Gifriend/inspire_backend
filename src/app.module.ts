@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { ElearningModule } from './elearning/elearning.dto';
 import { AcademicModule } from './academic/academic.module';
 import { LoggerMiddleware } from './common/middleware/middleware';
+import { PresensiModule } from './presensi/presensi.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { LoggerMiddleware } from './common/middleware/middleware';
     AuthModule,
     ElearningModule,
     AcademicModule,
+    PresensiModule
   ],
   controllers: [],
   providers: [],

@@ -36,7 +36,6 @@ async function main() {
     },
   });
 
-  // User Koorprodi (NEW)
   const koorprodi = await prisma.user.upsert({
     where: { email: 'koor@univ.ac.id' },
     update: { password: hashedPassword },
@@ -121,7 +120,7 @@ async function main() {
     }
   });
 
-  // 5. CLEANUP TRANSAKSI
+  // 5. CLEANUP
   await prisma.presensiRecord.deleteMany({ where: { mahasiswaId: mahasiswa.id } });
   await prisma.presensiSession.deleteMany({ where: { kelasPerkuliahanId: kelasWebGanjil.id } });
   
@@ -132,7 +131,7 @@ async function main() {
   await prisma.pengumuman.deleteMany({ where: { dosenId: dosen.id } });
   await prisma.pengumuman.deleteMany({ where: { dosenId: koorprodi.id } });
 
-  // 6. SKENARIO HISTORY (GANJIL)
+  // 6. SKENARIO HISTORY
   await prisma.kRS.create({
     data: {
       mahasiswaId: mahasiswa.id, semester: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
@@ -147,7 +146,7 @@ async function main() {
     }
   });
 
-  // 7. SKENARIO ACTIVE (GENAP)
+  // 7. SKENARIO ACTIVE
   await prisma.kRS.create({
     data: {
       mahasiswaId: mahasiswaDraft.id, semester: '2024/2025 Ganjil', status: StatusKRS.DRAFT,
@@ -186,40 +185,39 @@ async function main() {
     }
   });
 
-  // 9. NEW: PENGUMUMAN
-  // Pengumuman Global (Koorprodi)
+  // 9. PENGUMUMAN
   await prisma.pengumuman.create({
     data: {
       judul: 'Informasi Akademik Koorprodi',
       isi: 'Jadwal UAS akan dimulai bulan depan.',
       kategori: 'AKADEMIK',
       dosenId: koorprodi.id,
-      isGlobal: true, // Field baru
+      isGlobal: true, 
     }
   });
 
-  // Pengumuman Spesifik Kelas (Dosen) - Relasi Many-to-Many
   await prisma.pengumuman.create({
     data: {
       judul: 'Persiapan UAS Web',
       isi: 'Pelajari materi pertemuan 1-7.',
       kategori: 'AKADEMIK',
       dosenId: dosen.id,
-      kelas: { connect: [{ id: kelasWebGanjil.id }] } // Connect relasi baru
+      kelas: { connect: [{ id: kelasWebGanjil.id }] }
     }
   });
 
-  // 10. NEW: PRESENSI
+  // 10. PRESENSI (Updated Schema: Token & Method)
   await prisma.presensiSession.create({
     data: {
       title: 'Pertemuan 1: Kontrak Kuliah',
       type: SessionType.KELAS,
       kelasPerkuliahanId: kelasWebGanjil.id,
       date: new Date(),
+      token: 'A1B2C3D4', // NEW: Token wajib 8 karakter
       records: {
         create: {
           mahasiswaId: mahasiswa.id,
-          swafotoUrl: 'http://img.com/selfie.jpg'
+          method: 'MANUAL', // NEW: Method pengganti swafotoUrl
         }
       }
     }
