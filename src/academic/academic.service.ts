@@ -175,4 +175,95 @@ export class AcademicService {
       </html>
     `;
   }
+
+  async getTranskrip(mahasiswaId: number) {
+    // 1. Ambil data mahasiswa
+    const mahasiswa = await prisma.user.findUnique({
+      where: { id: mahasiswaId },
+      include: {
+        prodi: true,
+        fakultas: true,
+      },
+    });
+
+    if (!mahasiswa) throw new NotFoundException('Mahasiswa tidak ditemukan');
+
+    // 2. Ambil SEMUA nilai yang sudah ada (SUDAH_ADA)
+    const allNilai = await prisma.nilai.findMany({
+      where: {
+        mahasiswaId: mahasiswaId,
+        status: 'SUDAH_ADA', // Hanya nilai yang sudah fix
+      },
+      include: {
+        mataKuliah: true, // Butuh data SKS dan Kode MK
+      },
+      orderBy: {
+        semester: 'asc', // Urutkan berdasarkan semester pengambilan
+      },
+    });
+
+    // 3. LOGIKA FILTER NILAI TERBAIK (Best Grade Policy)
+    // Jika mahasiswa mengulang MK, kita hanya ambil nilai indeks tertinggi untuk IPK
+    const bestGradesMap = new Map<string, any>();
+
+    for (const record of allNilai) {
+      const kodeMK = record.mataKuliah.kode;
+      const existing = bestGradesMap.get(kodeMK);
+
+      // Jika belum ada, atau nilai sekarang LEBIH BESAR dari yang tersimpan
+      if (
+        !existing ||
+        (record.indeksNilai !== null &&
+          (existing.indeksNilai === null || record.indeksNilai > existing.indeksNilai))
+      ) {
+        bestGradesMap.set(kodeMK, {
+          kode: kodeMK,
+          matakuliah: record.mataKuliah.name,
+          sks: record.mataKuliah.sks,
+          nilaiHuruf: record.nilaiHuruf,
+          indeks: record.indeksNilai, // 4.0, 3.0, dst
+          semester: record.semester,
+        });
+      }
+    }
+
+    // Konversi Map ke Array
+    const transkripList = Array.from(bestGradesMap.values());
+
+    // 4. HITUNG IPK (Indeks Prestasi Kumulatif)
+    let totalSKS = 0;
+    let totalBobot = 0; // SKS * Indeks
+
+    transkripList.forEach((item) => {
+      totalSKS += item.sks;
+      totalBobot += item.sks * item.indeks;
+    });
+
+    const ipk = totalSKS > 0 ? (totalBobot / totalSKS).toFixed(2) : '0.00';
+
+    // 5. Return Data Rapih
+    return {
+      mahasiswa: {
+        nama: mahasiswa.name,
+        nim: mahasiswa.nim,
+        prodi: mahasiswa.prodi?.name ?? '-',
+        fakultas: mahasiswa.fakultas.name,
+      },
+      statistik: {
+        totalSKS: totalSKS,
+        totalMataKuliah: transkripList.length,
+        ipk: ipk,
+        predikat: this.getPredikat(parseFloat(ipk)),
+      },
+      transkrip: transkripList.sort((a, b) => a.semester.localeCompare(b.semester)), // Urutkan display per semester
+    };
+  }
+
+  // Helper Predikat Kelulusan
+  private getPredikat(ipk: number): string {
+    if (ipk >= 3.51) return 'Dengan Pujian (Cumlaude)';
+    if (ipk >= 3.01) return 'Sangat Memuaskan';
+    if (ipk >= 2.76) return 'Memuaskan';
+    return 'Cukup';
+  }
 }
