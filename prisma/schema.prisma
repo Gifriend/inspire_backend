@@ -11,12 +11,16 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
+
+// ==============================
+// 1. ENUMS
+// ==============================
 
 enum Role {
   MAHASISWA
   DOSEN
+  KOORPRODI // Tambahan Role Baru
 }
 
 enum Gender {
@@ -49,14 +53,24 @@ enum StatusNilai {
   SUDAH_ADA
 }
 
+enum SessionType { // Enum untuk Tipe Presensi
+  KELAS
+  UAS
+  EVENT
+}
+
+// ==============================
+// 2. DATA MASTER (Fakultas, Prodi, User)
+// ==============================
+
 model Fakultas {
-  id    Int    @id @default(autoincrement())
-  name  String
-  kode  String @unique
-  dekan String?
+  id        Int      @id @default(autoincrement())
+  name      String
+  kode      String   @unique
+  dekan     String?
   
-  prodi Prodi[]
-  users User[]
+  prodi     Prodi[]
+  users     User[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -70,21 +84,21 @@ model Prodi {
   kaprodi    String?
   fakultasId Int
   
-  fakultas     Fakultas     @relation(fields: [fakultasId], references: [id], onDelete: Cascade)
-  users        User[]
-  mataKuliah   Matakuliah[]
-  kurikulum    Kurikulum[]
+  fakultas   Fakultas     @relation(fields: [fakultasId], references: [id], onDelete: Cascade)
+  users      User[]
+  mataKuliah Matakuliah[]
+  kurikulum  Kurikulum[]
   
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model User {
-  id           Int     @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   name         String
-  nim          String? @unique // Nullable untuk dosen/admin
-  nip          String? @unique // Untuk dosen/staff
-  email        String  @unique
+  nim          String?   @unique // Nullable untuk dosen/admin
+  nip          String?   @unique // Untuk dosen/staff
+  email        String    @unique
   role         Role
   gender       Gender
   password     String
@@ -99,33 +113,34 @@ model User {
   fakultas     Fakultas @relation(fields: [fakultasId], references: [id])
   prodi        Prodi?   @relation(fields: [prodiId], references: [id])
   
-  // Relasi untuk mahasiswa
-  krs          KRS[]
-  nilai        Nilai[]
-  
-  // Relasi untuk dosen
-  mengajarMataKuliah KelasPerkuliahan[]
-  pembimbingSkripsi  Skripsi[]         @relation("PembimbingUtama")
-  coPembimbingSkripsi Skripsi[]        @relation("CoPembimbing")
+  // Relasi Mahasiswa
+  krs             KRS[]
+  nilai           Nilai[]
+  skripsi         Skripsi[]
+  submissions     Submission[]  // E-Learning
+  quizAttempts    QuizAttempt[] // E-Learning
+  presensiRecords PresensiRecord[] // Presensi (Log Kehadiran)
+
+  // Relasi Dosen
+  mengajarMataKuliah  KelasPerkuliahan[]
+  pembimbingSkripsi   Skripsi[]          @relation("PembimbingUtama")
+  coPembimbingSkripsi Skripsi[]          @relation("CoPembimbing")
+  pengumuman          Pengumuman[]       // Pengumuman yang dibuat dosen/koorprodi
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  Skripsi Skripsi[]
-
-  Pengumuman Pengumuman[]
-
-  // Relasi E-Learning (Ditambahkan untuk memperbaiki error)
-  submissions Submission[]
-  quizAttempts QuizAttempt[]
 }
 
+// ==============================
+// 3. AKADEMIK (Kurikulum, MK, Kelas)
+// ==============================
+
 model Kurikulum {
-  id       Int    @id @default(autoincrement())
-  name     String
-  tahun    Int
-  status   StatusMataKuliah @default(AKTIF)
-  prodiId  Int
+  id        Int      @id @default(autoincrement())
+  name      String
+  tahun     Int
+  status    StatusMataKuliah @default(AKTIF)
+  prodiId   Int
   
   prodi      Prodi        @relation(fields: [prodiId], references: [id])
   mataKuliah Matakuliah[]
@@ -135,24 +150,24 @@ model Kurikulum {
 }
 
 model Matakuliah {
-  id           Int      @id @default(autoincrement())
-  name         String
-  kode         String   @unique
-  sks          Int
-  semester     Int      // 1-14
-  jenisMK      String   // Wajib, Pilihan
-  deskripsi    String?
-  silabus      String?
-  status       StatusMataKuliah @default(AKTIF)
-  prodiId      Int
-  kurikulumId  Int
+  id          Int      @id @default(autoincrement())
+  name        String
+  kode        String   @unique
+  sks         Int
+  semester    Int      // 1-14
+  jenisMK     String   // Wajib, Pilihan
+  deskripsi   String?
+  silabus     String?
+  status      StatusMataKuliah @default(AKTIF)
+  prodiId     Int
+  kurikulumId Int
   
-  prodi           Prodi              @relation(fields: [prodiId], references: [id])
-  kurikulum       Kurikulum          @relation(fields: [kurikulumId], references: [id])
-  prasyarat       PrasyaratMK[]      @relation("MataKuliahUtama")
-  syaratUntuk     PrasyaratMK[]      @relation("MataKuliahPrasyarat")
+  prodi            Prodi              @relation(fields: [prodiId], references: [id])
+  kurikulum        Kurikulum          @relation(fields: [kurikulumId], references: [id])
+  prasyarat        PrasyaratMK[]      @relation("MataKuliahUtama")
+  syaratUntuk      PrasyaratMK[]      @relation("MataKuliahPrasyarat")
   kelasPerkuliahan KelasPerkuliahan[]
-  nilai           Nilai[]
+  nilai            Nilai[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,63 +185,75 @@ model PrasyaratMK {
 }
 
 model KelasPerkuliahan {
-  id           Int    @id @default(autoincrement())
-  kode         String @unique
+  id           Int      @id @default(autoincrement())
+  kode         String   @unique
   nama         String
   kapasitas    Int
   ruangan      String?
-  jadwal       String? // JSON string untuk jadwal mingguan
+  jadwal       String? // JSON string
   semester     String  // "2024/2025 Ganjil"
   mataKuliahId Int
   dosenId      Int
   
-  mataKuliah Matakuliah @relation(fields: [mataKuliahId], references: [id])
-  dosen      User       @relation(fields: [dosenId], references: [id])
-  krs        KRS[]
+  mataKuliah       Matakuliah        @relation(fields: [mataKuliahId], references: [id])
+  dosen            User              @relation(fields: [dosenId], references: [id])
+  krs              KRS[]
   
+  // E-Learning Sessions (Materi & Tugas)
+  sessions         Session[]         
+
+  // Presensi Sessions (Absensi Kehadiran)
+  presensiSessions PresensiSession[] 
+
+  // Pengumuman (Many-to-Many)
+  pengumuman       Pengumuman[]      
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  Pengumuman Pengumuman[]
-
-  // Relasi E-Learning (Ditambahkan untuk memperbaiki error)
-  sessions Session[]
 }
 
 model KRS {
-  id                 Int        @id @default(autoincrement())
-  semester           String     // "2024/2025 Ganjil"
-  status             StatusKRS  @default(DRAFT)
-  totalSKS           Int        @default(0)
-  tanggalPengajuan   DateTime?
+  id               Int       @id @default(autoincrement())
+  semester         String    // "2024/2025 Ganjil"
+  status           StatusKRS @default(DRAFT)
+  totalSKS         Int       @default(0)
+  tanggalPengajuan DateTime?
   tanggalPersetujuan DateTime?
-  catatanDosen       String?
-  mahasiswaId        Int
+  catatanDosen     String?
+  mahasiswaId      Int
+  kelasPerkuliahanId Int?    // Ditambahkan agar relasi jelas di DB level (opsional jika pakai implicit many-to-many, tapi explicit lebih aman untuk report)
   
-  mahasiswa          User                @relation(fields: [mahasiswaId], references: [id])
-  kelasPerkuliahan   KelasPerkuliahan[]
+  mahasiswa        User      @relation(fields: [mahasiswaId], references: [id])
+  
+  // Perbaikan: Biasanya KRS Many-to-Many dengan Kelas, atau One-to-Many detail. 
+  // Di schema Anda sebelumnya: KelasPerkuliahan[], yang berarti implicit many-to-many. 
+  // Kita pertahankan implicit many-to-many agar konsisten dengan schema lama Anda.
+  kelasPerkuliahan KelasPerkuliahan[] 
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
+  // @@unique([mahasiswaId, semester]) // PERHATIAN: Unique ini menyebabkan error jika mahasiswa ambil banyak kelas di semester sama.
+  // Sebaiknya unique hanya jika struktur KRS adalah Header. Jika KRS adalah Detail (per matkul), hapus unique ini.
+  // Asumsi: Model ini adalah Header KRS (Satu per semester per mahasiswa).
   @@unique([mahasiswaId, semester])
 }
 
 model Nilai {
-  id            Int         @id @default(autoincrement())
-  nilaiTugas    Float?      @default(0)
-  nilaiUTS      Float?      @default(0)
-  nilaiUAS      Float?      @default(0)
-  nilaiAkhir    Float?      @default(0)
-  nilaiHuruf    String?     // A, B+, B, C+, C, D, E
-  indeksNilai   Float?      // 4.0, 3.5, 3.0, dst
-  status        StatusNilai @default(BELUM_ADA)
-  semester      String      // "2024/2025 Ganjil"
-  mahasiswaId   Int
-  mataKuliahId  Int
+  id           Int         @id @default(autoincrement())
+  nilaiTugas   Float?      @default(0)
+  nilaiUTS     Float?      @default(0)
+  nilaiUAS     Float?      @default(0)
+  nilaiAkhir   Float?      @default(0)
+  nilaiHuruf   String?     // A, B+, B, C+, C, D, E
+  indeksNilai  Float?      // 4.0, 3.5, 3.0
+  status       StatusNilai @default(BELUM_ADA)
+  semester     String      // "2024/2025 Ganjil"
+  mahasiswaId  Int
+  mataKuliahId Int
   
-  mahasiswa     User       @relation(fields: [mahasiswaId], references: [id])
-  mataKuliah    Matakuliah @relation(fields: [mataKuliahId], references: [id])
+  mahasiswa    User       @relation(fields: [mahasiswaId], references: [id])
+  mataKuliah   Matakuliah @relation(fields: [mataKuliahId], references: [id])
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,11 +261,77 @@ model Nilai {
   @@unique([mahasiswaId, mataKuliahId, semester])
 }
 
+// ==============================
+// 4. FITUR BARU: PRESENSI (KEHADIRAN)
+// ==============================
+
+model PresensiSession {
+  id                 Int      @id @default(autoincrement())
+  title              String   // "Pertemuan 1", "UAS", "Seminar Umum"
+  type               SessionType @default(KELAS)
+  date               DateTime @default(now())
+  isOpen             Boolean  @default(true) 
+
+  // Relasi ke Kelas (Opsional karena Event bisa tanpa kelas)
+  kelasPerkuliahanId Int?
+  kelasPerkuliahan   KelasPerkuliahan? @relation(fields: [kelasPerkuliahanId], references: [id])
+
+  records            PresensiRecord[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model PresensiRecord {
+  id          Int      @id @default(autoincrement())
+  swafotoUrl  String?  
+  location    String?  // Koordinat GPS (Opsional)
+  createdAt   DateTime @default(now())
+
+  sessionId   Int
+  session     PresensiSession @relation(fields: [sessionId], references: [id])
+
+  mahasiswaId Int
+  mahasiswa   User     @relation(fields: [mahasiswaId], references: [id])
+
+  @@unique([sessionId, mahasiswaId]) // Mencegah absen ganda
+}
+
+// ==============================
+// 5. FITUR UPDATE: PENGUMUMAN (MULTI-KELAS)
+// ==============================
+
+model Pengumuman {
+  id        Int      @id @default(autoincrement())
+  judul     String
+  isi       String
+  kategori  String   // AKADEMIK, KEMAHASISWAAN, UMUM
+  prioritas String   @default("NORMAL") 
+  aktif     Boolean  @default(true)
+  
+  dosenId   Int
+  dosen     User     @relation(fields: [dosenId], references: [id])
+
+  // UPDATE: Relasi Many-to-Many ke KelasPerkuliahan
+  // (Satu pengumuman bisa masuk ke banyak kelas, satu kelas bisa punya banyak pengumuman)
+  kelas     KelasPerkuliahan[] 
+
+  // Penanda jika pengumuman ini Global (misal dari Koorprodi untuk semua, tanpa terikat kelas)
+  isGlobal  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==============================
+// 6. SKRIPSI
+// ==============================
+
 model Skripsi {
   id                Int      @id @default(autoincrement())
   judul             String
   abstrak           String?
-  statusPengajuan   String   @default("DRAFT") // DRAFT, DIAJUKAN, DISETUJUI, DITOLAK, SELESAI
+  statusPengajuan   String   @default("DRAFT") 
   tanggalPengajuan  DateTime?
   tanggalSidang     DateTime?
   nilaiAkhir        Float?
@@ -246,49 +339,23 @@ model Skripsi {
   pembimbingUtamaId Int
   coPembimbingId    Int?
   
-  mahasiswa         User @relation(fields: [mahasiswaId], references: [id])
-  pembimbingUtama   User @relation("PembimbingUtama", fields: [pembimbingUtamaId], references: [id])
-  coPembimbing      User? @relation("CoPembimbing", fields: [coPembimbingId], references: [id])
+  mahasiswa       User @relation(fields: [mahasiswaId], references: [id])
+  pembimbingUtama User @relation("PembimbingUtama", fields: [pembimbingUtamaId], references: [id])
+  coPembimbing    User? @relation("CoPembimbing", fields: [coPembimbingId], references: [id])
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Semester {
-  id             Int      @id @default(autoincrement())
-  nama           String   @unique // "2024/2025 Ganjil"
-  tahunAkademik  String   // "2024/2025"
-  jenis          String   // "Ganjil" atau "Genap"
-  tanggalMulai   DateTime
-  tanggalSelesai DateTime
-  status         String   @default("TIDAK_AKTIF") // AKTIF, TIDAK_AKTIF
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// ==============================
+// 7. E-LEARNING (Materi, Tugas, Kuis)
+// ==============================
 
-model Pengumuman {
-  id                 Int      @id @default(autoincrement())
-  judul              String
-  isi                String
-  kategori           String   // AKADEMIK, KEMAHASISWAAN, UMUM
-  prioritas          String   @default("NORMAL") // TINGGI, NORMAL, RENDAH
-  aktif              Boolean  @default(true)
-  dosenId            Int
-  kelasPerkuliahanId Int?
-
-  dosen              User                @relation(fields: [dosenId], references: [id])
-  kelasPerkuliahan   KelasPerkuliahan?   @relation(fields: [kelasPerkuliahanId], references: [id])
-
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
-
-model Session {
+model Session { // Ini sesi E-Learning (Materi/Tugas), BUKAN Absensi
   id                 String   @id @default(uuid())
-  title              String   // Contoh: "Pertemuan 1: Pengenalan"
+  title              String   
   description        String?
-  weekNumber         Int      // Pertemuan ke-1, ke-2
+  weekNumber         Int      
   kelasPerkuliahanId Int
   
   kelasPerkuliahan   KelasPerkuliahan @relation(fields: [kelasPerkuliahanId], references: [id])
@@ -301,92 +368,87 @@ model Session {
   updatedAt          DateTime @updatedAt
 }
 
-// 2. MATERI (Text, File, atau Hybrid)
 model Material {
-  id          String       @id @default(uuid())
-  title       String
-  type        MaterialType // TEXT, FILE, HYBRID
-  content     String?      // Isi teks (Rich Text/HTML)
-  fileUrl     String?      // Link ke file (PDF/PPT)
-  sessionId   String
+  id        String       @id @default(uuid())
+  title     String
+  type      MaterialType 
+  content   String?      
+  fileUrl   String?      
+  sessionId String
 
-  session     Session      @relation(fields: [sessionId], references: [id])
+  session   Session      @relation(fields: [sessionId], references: [id])
   
-  createdAt   DateTime     @default(now())
+  createdAt DateTime     @default(now())
 }
 
 enum MaterialType {
   TEXT
   FILE
-  HYBRID // Ada teks penjelasan + file download
+  HYBRID 
 }
 
-// 3. TUGAS (Assignment)
 model Assignment {
-  id             String   @id @default(uuid())
-  title          String
-  description    String?
-  fileUrl        String?  // Soal dalam bentuk file
-  deadline       DateTime
-  allowLate      Boolean  @default(false)
-  sessionId      String
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  fileUrl     String?  
+  deadline    DateTime
+  allowLate   Boolean  @default(false)
+  sessionId   String
 
-  session        Session  @relation(fields: [sessionId], references: [id])
-  submissions    Submission[]
+  session     Session  @relation(fields: [sessionId], references: [id])
+  submissions Submission[]
 
-  createdAt      DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
-// 4. PENGUMPULAN TUGAS (Submission)
 model Submission {
-  id            String   @id @default(uuid())
-  studentId     Int      // User ID (Mahasiswa)
-  assignmentId  String
-  fileUrl       String?  // File jawaban mhs
-  textContent   String?  // Jawaban teks langsung
-  grade         Float?   // Nilai (0-100)
-  feedback      String?  // Komentar Dosen
-  submittedAt   DateTime @default(now())
+  id           String   @id @default(uuid())
+  studentId    Int      
+  assignmentId String
+  fileUrl      String?  
+  textContent  String?  
+  grade        Float?   
+  feedback     String?  
+  submittedAt  DateTime @default(now())
 
-  student       User       @relation(fields: [studentId], references: [id])
-  assignment    Assignment @relation(fields: [assignmentId], references: [id])
+  student      User       @relation(fields: [studentId], references: [id])
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
 }
 
-// 5. KUIS (Quiz)
 model Quiz {
-  id            String      @id @default(uuid())
+  id            String   @id @default(uuid())
   title         String
   description   String?
-  duration      Int         // Durasi dalam menit
+  duration      Int      
   startTime     DateTime
   endTime       DateTime
   gradingMethod QuizGradingMethod @default(HIGHEST_GRADE)
   sessionId     String
 
-  session       Session     @relation(fields: [sessionId], references: [id])
+  session       Session  @relation(fields: [sessionId], references: [id])
   questions     Question[]
   attempts      QuizAttempt[]
 
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime @default(now())
 }
 
 enum QuizGradingMethod {
-  HIGHEST_GRADE  // Nilai Tertinggi
-  LATEST_GRADE   // Nilai Terakhir
-  AVERAGE_GRADE  // Rata-rata
+  HIGHEST_GRADE 
+  LATEST_GRADE  
+  AVERAGE_GRADE 
 }
 
-// 6. PERTANYAAN KUIS
 model Question {
-  id            String      @id @default(uuid())
-  text          String      // Soal
+  id            String       @id @default(uuid())
+  text          String       
   type          QuestionType
-  options       Json?       // Array opsi jawaban (A, B, C, D) untuk PG
-  correctAnswer String?     // Kunci jawaban
-  points        Int         @default(10)
+  options       Json?        
+  correctAnswer String?      
+  points        Int          @default(10)
   quizId        String
 
-  quiz          Quiz        @relation(fields: [quizId], references: [id])
+  quiz          Quiz         @relation(fields: [quizId], references: [id])
 }
 
 enum QuestionType {
@@ -395,15 +457,14 @@ enum QuestionType {
   TRUE_FALSE
 }
 
-// 7. PERCOBAAN KUIS MAHASISWA
 model QuizAttempt {
-  id          String    @id @default(uuid())
-  studentId   Int
-  quizId      String
-  startedAt   DateTime  @default(now())
-  finishedAt  DateTime?
-  score       Float?
+  id         String    @id @default(uuid())
+  studentId  Int
+  quizId     String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  score      Float?
 
-  student     User      @relation(fields: [studentId], references: [id])
-  quiz        Quiz      @relation(fields: [quizId], references: [id])
+  student    User      @relation(fields: [studentId], references: [id])
+  quiz       Quiz      @relation(fields: [quizId], references: [id])
 }

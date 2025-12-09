@@ -1,20 +1,20 @@
-import { IsString, IsEnum, IsOptional, IsInt } from 'class-validator';
+import { IsString, IsArray, IsOptional, IsInt, IsNotEmpty } from 'class-validator';
 
 export class CreatePengumumanDto {
+  @IsNotEmpty()
   @IsString()
-  judul: string;
+  title: string; 
 
+  @IsNotEmpty()
   @IsString()
-  isi: string;
+  content: string;
 
+  @IsNotEmpty()
   @IsString()
-  kategori: string;
+  category: string; 
 
-  @IsEnum(['TINGGI', 'NORMAL', 'RENDAH'])
   @IsOptional()
-  prioritas?: 'TINGGI' | 'NORMAL' | 'RENDAH' = 'NORMAL';
-
-  @IsInt()
-  @IsOptional()
-  kelasPerkuliahanId?: number;
+  @IsArray()
+  @IsInt({ each: true })
+  kelasIds?: number[]; 
 }

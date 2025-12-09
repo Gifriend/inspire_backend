@@ -6,7 +6,7 @@ import {
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { Role, User } from '@prisma/client';
 import { PengumumanService } from './pengumuman.service';
 import { JwtAuthGuard } from 'src/auth/strategy/jwt-auth.guard';
 import { CreatePengumumanDto } from './dto/create-pengumuman.dto';
@@ -18,13 +18,16 @@ export class PengumumanController {
 
   @UseGuards(JwtAuthGuard)
   @Post()
-  async create(
+   async create(
     @Body() dto: CreatePengumumanDto,
     @CurrentUser() user: User,
   ) {
-    if (user.role !== 'DOSEN') {
-      throw new ForbiddenException('Hanya dosen yang dapat membuat pengumuman');
+    // Cek basic: Mahasiswa tidak boleh
+    if (user.role === Role.MAHASISWA) {
+      throw new ForbiddenException('Mahasiswa tidak dapat membuat pengumuman');
     }
+
+    // Logika Koorprodi ada di Service untuk validasi multi-kelas
     return this.pengumumanService.create(dto, user);
   }
 

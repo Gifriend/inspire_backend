@@ -1,88 +1,91 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service'; 
 import { CreatePengumumanDto } from './dto/create-pengumuman.dto';
-import { User } from '@prisma/client';
+import { User, Role } from '@prisma/client';
 
 @Injectable()
 export class PengumumanService {
   constructor(private prisma: PrismaService) {}
 
-  async create(
-    dto: CreatePengumumanDto,
-    dosen: User,
-  ) {
-    if (dosen.role !== 'DOSEN') {
-      throw new ForbiddenException('Hanya dosen yang dapat membuat pengumuman');
+  async create(dto: CreatePengumumanDto, user: User) {
+    const hasMultipleClasses = dto.kelasIds && dto.kelasIds.length > 1;
+
+    // RULE: Hanya KOORPRODI yang boleh kirim ke BANYAK kelas sekaligus
+    if (hasMultipleClasses && user.role !== Role.KOORPRODI) {
+      throw new ForbiddenException(
+        'Hanya Koorprodi yang dapat membuat pengumuman untuk banyak kelas sekaligus.'
+      );
     }
 
-    if (dto.kelasPerkuliahanId) {
-      const kelas = await this.prisma.kelasPerkuliahan.findUnique({
-        where: { id: dto.kelasPerkuliahanId },
+    // Validasi Kepemilikan Kelas (Jika Dosen biasa)
+    if (dto.kelasIds && dto.kelasIds.length > 0 && user.role === Role.DOSEN) {
+      // Pastikan semua kelas yang dipilih adalah milik dosen tersebut
+      const count = await this.prisma.kelasPerkuliahan.count({
+        where: {
+          id: { in: dto.kelasIds },
+          dosenId: user.id
+        }
       });
-      if (!kelas || kelas.dosenId !== dosen.id) {
-        throw new ForbiddenException('Kelas tidak ditemukan atau bukan milik Anda');
+      
+      if (count !== dto.kelasIds.length) {
+        throw new ForbiddenException('Salah satu kelas yang dipilih bukan milik Anda.');
       }
     }
 
+    // Create dengan Relasi Many-to-Many
     return this.prisma.pengumuman.create({
       data: {
-        ...dto,
-        dosenId: dosen.id,
+        // MAPPING DTO -> SCHEMA
+        judul: dto.title,       // Schema: judul
+        isi: dto.content,       // Schema: isi
+        kategori: dto.category, // Schema: kategori (Wajib)
+        
+        dosenId: user.id,
+        
+        // Connect ke beberapa kelas (Many-to-Many)
+        kelas: dto.kelasIds && dto.kelasIds.length > 0 ? {
+          connect: dto.kelasIds.map((id) => ({ id })),
+        } : undefined,
+
+        // Logic Global: Jika tidak ada kelasIds DAN user adalah Koorprodi
+        isGlobal: (!dto.kelasIds || dto.kelasIds.length === 0) && user.role === Role.KOORPRODI
       },
-      include: { dosen: { select: { id: true, name: true, nip: true } } },
+      include: { 
+        kelas: { select: { nama: true, kode: true } } 
+      }
     });
   }
 
+  // Update findAllForMahasiswa agar mendukung M-N relation
   async findAllForMahasiswa(mahasiswaId: number) {
-    // Ambil semua kelas yang dikontrak mahasiswa (KRS disetujui)
-    const krsList = await this.prisma.kRS.findMany({
-      where: {
-        mahasiswaId,
-        status: 'DISETUJUI',
-      },
-      select: {
-        kelasPerkuliahan: {
-          select: { dosenId: true, id: true },
-        },
-      },
+    // 1. Ambil ID Kelas yang diambil mahasiswa (KRS Disetujui)
+    const krs = await this.prisma.kRS.findMany({
+      where: { mahasiswaId, status: 'DISETUJUI' },
+      select: { kelasPerkuliahanId: true }
     });
+    
+    // Filter null values (karena di schema baru kelasPerkuliahanId bersifat nullable)
+    const myKelasIds = krs
+      .map(k => k.kelasPerkuliahanId)
+      .filter((id): id is number => id !== null);
 
-    const dosenIdsSet = new Set<number>();
-    const kelasIds: number[] = [];
-
-    for (const k of krsList) {
-      const kp = (k as any).kelasPerkuliahan;
-      if (Array.isArray(kp)) {
-        for (const p of kp) {
-          if (p?.dosenId) dosenIdsSet.add(p.dosenId);
-          if (p?.id) kelasIds.push(p.id);
-        }
-      } else {
-        if (kp?.dosenId) dosenIdsSet.add(kp.dosenId);
-        if (kp?.id) kelasIds.push(kp.id);
-      }
-    }
-
-    const dosenIds = Array.from(dosenIdsSet);
-
-    // Get Announcements:
-    // - that be chosen to spesific classes (kelasPerkuliahanId IN kelasIds)
-    // - or globally from dosen (kelasPerkuliahanId = null AND dosenId IN dosenIds)
-    const pengumuman = await this.prisma.pengumuman.findMany({
+    // 2. Query Pengumuman
+    return this.prisma.pengumuman.findMany({
       where: {
         aktif: true,
         OR: [
-          { kelasPerkuliahanId: { in: kelasIds } },
-          { kelasPerkuliahanId: null, dosenId: { in: dosenIds } },
-        ],
+          // A. Pengumuman yang terhubung ke kelas saya (Many-to-Many check)
+          { kelas: { some: { id: { in: myKelasIds } } } },
+          
+          // B. Pengumuman Global (Flag isGlobal = true)
+          { isGlobal: true }
+        ]
       },
       include: {
         dosen: { select: { name: true, nip: true } },
-        kelasPerkuliahan: { select: { nama: true, kode: true } },
+        kelas: { select: { nama: true, kode: true } } // Tampilkan tag kelas
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'desc' }
     });
-
-    return pengumuman;
   }
 }

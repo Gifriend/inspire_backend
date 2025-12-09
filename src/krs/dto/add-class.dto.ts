@@ -5,25 +5,25 @@ export class AddClassDto {
   @IsNotEmpty()
   kelasId: number;
 
-  @IsString()
-  @IsNotEmpty()
-  kodeMataKuliah: string;
+  // @IsString()
+  // @IsNotEmpty()
+  // kodeMataKuliah: string;
 
-  @IsString()
-  @IsNotEmpty()
-  namaMataKuliah: string;
+  // @IsString()
+  // @IsNotEmpty()
+  // namaMataKuliah: string;
 
-  @IsInt()
-  @IsNotEmpty()
-  sks: number;
+  // @IsInt()
+  // @IsNotEmpty()
+  // sks: number;
 
-  @IsString()
-  @IsNotEmpty()
-  dosen: string;
+  // @IsString()
+  // @IsNotEmpty()
+  // dosen: string;
 
-  @IsInt()
-  @IsNotEmpty()
-  kapasitas: number;
+  // @IsInt()
+  // @IsNotEmpty()
+  // kapasitas: number;
 
   @IsString()
   @IsNotEmpty()

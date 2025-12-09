@@ -68,7 +68,7 @@ export class AuthService {
         role: user.role 
       };
 
-      const newAccessToken = this.jwtService.sign(newPayload, { expiresIn: '15m' });
+      const newAccessToken = this.jwtService.sign(newPayload, { expiresIn: '15d' });
 
       return {
         access_token: newAccessToken,
