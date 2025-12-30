@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StatusKRS } from '@prisma/client'; // Import Enum dari Prisma Client
+import { StatusKRS } from '@prisma/client'; // Import Enum from Prisma Client
 import { AddClassDto } from './dto/add-class.dto';
 import { SubmitKrsDto } from './dto/submit-krs.dto';
 
@@ -13,13 +13,13 @@ import { SubmitKrsDto } from './dto/submit-krs.dto';
 export class KrsService {
   constructor(private prisma: PrismaService) {}
 
-  // Helper: Ambil KRS aktif atau buat baru (DRAFT)
+  // Helper: Get active KRS or create new one (DRAFT)
   async getOrCreateKrs(mahasiswaId: number, semester: string) {
-    // Cek apakah sudah ada KRS
+    // Check if KRS already exists
     let krs = await this.prisma.kRS.findUnique({
       where: {
         mahasiswaId_semester: {
-          // Composite key dari schema prisma
+          // Composite key from Prisma schema
           mahasiswaId,
           semester,
         },
@@ -31,7 +31,7 @@ export class KrsService {
       },
     });
 
-    // Jika belum ada, buat baru
+    // If not exists, create new one
     if (!krs) {
       krs = await this.prisma.kRS.create({
         data: {
@@ -52,7 +52,7 @@ export class KrsService {
   }
 
   async addClassToKrs(mahasiswaId: number, dto: AddClassDto) {
-    // 1. Validasi Mahasiswa
+    // 1. Validate Student
     const user = await this.prisma.user.findUnique({
       where: { id: mahasiswaId },
     });
@@ -60,15 +60,15 @@ export class KrsService {
       throw new ForbiddenException('Hanya mahasiswa yang bisa tambah kelas');
     }
 
-    // 2. Ambil Kelas yang mau diambil untuk cek SKS & Kapasitas
+    // 2. Get the class to be taken to check SKS & Capacity
     const targetKelas = await this.prisma.kelasPerkuliahan.findUnique({
-      where: { id: dto.kelasId }, // Asumsi DTO kirim ID (Int) bukan string
+      where: { id: dto.kelasId }, // Assuming DTO sends ID (Int) not string
       include: { mataKuliah: true },
     });
 
     if (!targetKelas) throw new NotFoundException('Kelas tidak ditemukan');
 
-    // 3. Ambil KRS Draf
+    // 3. Get Draft KRS
     const krs = await this.getOrCreateKrs(mahasiswaId, dto.semester);
 
     if (krs.status !== StatusKRS.DRAFT) {
@@ -77,7 +77,7 @@ export class KrsService {
       );
     }
 
-    // 4. Cek Duplikasi (Apakah kelas ini sudah diambil?)
+    // 4. Check for Duplicates (Is this class already taken?)
     const alreadyExists = krs.kelasPerkuliahan.some(
       (k) => k.id === dto.kelasId,
     );
@@ -85,8 +85,8 @@ export class KrsService {
       throw new BadRequestException('Kelas sudah terdaftar di KRS Anda');
     }
 
-    // 5. Update KRS: Connect Kelas & Update Total SKS
-    // Prisma otomatis menangani join table (many-to-many)
+    // 5. Update KRS: Connect Class & Update Total SKS
+    // Prisma automatically handles join table (many-to-many)
     const updatedKrs = await this.prisma.kRS.update({
       where: { id: krs.id },
       data: {
@@ -127,10 +127,10 @@ export class KrsService {
     return this.getOrCreateKrs(mahasiswaId, semester);
   }
 
-  // --- FITUR DOSEN ---
+  // --- LECTURER FEATURES ---
 
   async approveKrs(dosenId: number, krsId: number, catatan?: string) {
-    // Validasi Dosen: Pastikan user adalah DOSEN atau KOORPRODI
+    // Validate Lecturer: Ensure user is a LECTURER or PROGRAM COORDINATOR
     const dosen = await this.prisma.user.findUnique({
       where: { id: dosenId },
     });

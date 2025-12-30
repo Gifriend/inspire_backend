@@ -10,16 +10,16 @@ export class PengumumanService {
   async create(dto: CreatePengumumanDto, user: User) {
     const hasMultipleClasses = dto.kelasIds && dto.kelasIds.length > 1;
 
-    // RULE: Hanya KOORPRODI yang boleh kirim ke BANYAK kelas sekaligus
+    // RULE: Only PROGRAM COORDINATOR can send to MULTIPLE classes at once
     if (hasMultipleClasses && user.role !== Role.KOORPRODI) {
       throw new ForbiddenException(
         'Hanya Koorprodi yang dapat membuat pengumuman untuk banyak kelas sekaligus.'
       );
     }
 
-    // Validasi Kepemilikan Kelas (Jika Dosen biasa)
+    // Validate Class Ownership (If regular Lecturer)
     if (dto.kelasIds && dto.kelasIds.length > 0 && user.role === Role.DOSEN) {
-      // Pastikan semua kelas yang dipilih adalah milik dosen tersebut
+      // Ensure all selected classes belong to this lecturer
       const count = await this.prisma.kelasPerkuliahan.count({
         where: {
           id: { in: dto.kelasIds },
@@ -32,44 +32,44 @@ export class PengumumanService {
       }
     }
 
-    // Create dengan Relasi Many-to-Many
+    // Create with Many-to-Many Relation
     return this.prisma.pengumuman.create({
       data: {
         // MAPPING DTO -> SCHEMA
-        judul: dto.title,       // Schema: judul
-        isi: dto.content,       // Schema: isi
-        kategori: dto.category, // Schema: kategori (Wajib)
+        judul: dto.title,       // Schema: judul (title)
+        isi: dto.content,       // Schema: isi (content)
+        kategori: dto.category, // Schema: kategori (category) (Required)
         
         dosenId: user.id,
         
-        // Connect ke beberapa kelas (Many-to-Many)
+        // Connect to multiple classes (Many-to-Many)
         kelas: dto.kelasIds && dto.kelasIds.length > 0 ? {
           connect: dto.kelasIds.map((id) => ({ id })),
         } : undefined,
 
-        // Logic Global: Jika tidak ada kelasIds DAN user adalah Koorprodi
+        // Global Logic: If no kelasIds AND user is Program Coordinator
         isGlobal: (!dto.kelasIds || dto.kelasIds.length === 0) && user.role === Role.KOORPRODI
       },
       include: { 
-        kelas: { select: { nama: true, kode: true } } 
+        kelas: { select: { nama: true, kode: true } } // Display class tags
       }
     });
   }
 
-  // Update findAllForMahasiswa agar mendukung M-N relation
+  // Update findAllForMahasiswa to support M-N relation
   async findAllForMahasiswa(mahasiswaId: number) {
-    // 1. Ambil ID Kelas yang diambil mahasiswa (KRS Disetujui)
+    // 1. Get Class IDs taken by student (Approved KRS)
     const krs = await this.prisma.kRS.findMany({
       where: { mahasiswaId, status: 'DISETUJUI' },
       select: { kelasPerkuliahanId: true }
     });
     
-    // Filter null values (karena di schema baru kelasPerkuliahanId bersifat nullable)
+    // Filter null values (because in new schema kelasPerkuliahanId is nullable)
     const myKelasIds = krs
       .map(k => k.kelasPerkuliahanId)
       .filter((id): id is number => id !== null);
 
-    // 2. Query Pengumuman
+    // 2. Query Announcements
     return this.prisma.pengumuman.findMany({
       where: {
         aktif: true,

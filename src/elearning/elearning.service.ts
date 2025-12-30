@@ -13,7 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ElearningService {
   constructor(private prisma: PrismaService) {}
   
-  // 1. Buat Sesi Pertemuan
+  // 1. Create Session/Meeting
   async createSession(data: CreateSessionDto) {
     return this.prisma.session.create({
       data: {
@@ -25,14 +25,14 @@ export class ElearningService {
     });
   }
 
-  // 2. Upload Materi (Text, File, atau Hybrid)
+  // 2. Upload Material (Text, File, or Hybrid)
   async createMaterial(data: CreateMaterialDto, user: User) {
-    // Validasi Role
+    // Validate Role
     if (user.role === Role.MAHASISWA) {
       throw new ForbiddenException('Mahasiswa tidak dapat membuat materi');
     }
 
-    // Validasi data
+    // Validate data
     if (data.type === 'FILE' && !data.fileUrl) {
       throw new HttpException('File URL is required for FILE type', HttpStatus.BAD_REQUEST);
     }
@@ -51,7 +51,7 @@ export class ElearningService {
     });
   }
 
-  // 3. Buat Tugas
+  // 3. Create Assignment
   async createAssignment(data: CreateAssignmentDto) {
     return this.prisma.assignment.create({
       data: {
@@ -63,13 +63,13 @@ export class ElearningService {
     });
   }
 
-  // 4. Mahasiswa Mengirim Tugas
+  // 4. Student Submits Assignment
   async submitAssignment(data: SubmitAssignmentDto, user: User) {
     if (user.role !== Role.MAHASISWA) {
       throw new ForbiddenException('Hanya mahasiswa yang dapat mengumpulkan tugas.');
     }
 
-    // Cek deadline
+    // Check deadline
     const assignment = await this.prisma.assignment.findUnique({
       where: { id: data.assignmentId },
     });
@@ -80,7 +80,7 @@ export class ElearningService {
       throw new BadRequestException('Deadline has passed');
     }
 
-    // Cek apakah sudah pernah submit (Update or Create)
+    // Check if already submitted (Update or Create)
     const existing = await this.prisma.submission.findFirst({
       where: {
         studentId: user.id,
@@ -109,7 +109,7 @@ export class ElearningService {
     });
   }
 
-  // 5. Buat Kuis Lengkap dengan Soal
+  // 5. Create Quiz Complete with Questions
   async createQuiz(data: CreateQuizDto) {
     return this.prisma.quiz.create({
       data: {
@@ -123,7 +123,7 @@ export class ElearningService {
           create: data.questions.map(q => ({
             text: q.text,
             type: q.type,
-            options: q.options, // Prisma otomatis handle JSON
+            options: q.options, // Prisma automatically handles JSON
             correctAnswer: q.correctAnswer,
             points: q.points
           }))
@@ -133,14 +133,14 @@ export class ElearningService {
     });
   }
 
-  // 6. Submit Quiz (Menghitung Nilai) - FITUR BARU
+  // 6. Submit Quiz (Calculate Score) - NEW FEATURE
   async submitQuiz(data: any, user: User) {
-    // 1. Validasi
+    // 1. Validation
     if (user.role !== Role.MAHASISWA) {
       throw new ForbiddenException('Hanya mahasiswa yang dapat mengerjakan kuis.');
     }
 
-    // 2. Ambil Data Quiz
+    // 2. Get Quiz Data
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: data.quizId },
       include: { questions: true }
@@ -148,19 +148,19 @@ export class ElearningService {
 
     if (!quiz) throw new NotFoundException('Kuis tidak ditemukan');
 
-    // 3. Hitung Score
+    // 3. Calculate Score
     let score = 0;
     if (data.answers && Array.isArray(data.answers)) {
       for (const answer of data.answers) {
         const question = quiz.questions.find(q => q.id === answer.questionId);
-        // Jika jawaban benar (match key)
+        // If answer is correct (match key)
         if (question && question.correctAnswer === answer.answer) {
           score += question.points;
         }
       }
     }
 
-    // 4. Simpan Attempt
+    // 4. Save Attempt
     return this.prisma.quizAttempt.create({
       data: {
         studentId: user.id,
@@ -171,7 +171,7 @@ export class ElearningService {
     });
   }
   
-  // 7. Get Course Content (Untuk Halaman E-learning)
+  // 7. Get Course Content (For E-learning Page)
   async getCourseContent(kelasPerkuliahanId: number) {
     return this.prisma.session.findMany({
       where: { kelasPerkuliahanId },

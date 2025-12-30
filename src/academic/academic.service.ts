@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { KhsResponseDto } from './dto/academic.dto'; // Pastikan path ini sesuai
+import { KhsResponseDto } from './dto/academic.dto'; // Make sure this path is correct
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -7,7 +7,7 @@ export class AcademicService {
   constructor(private prisma: PrismaService) {}
   
   // ==========================================
-  // 1. FITUR KHS (LAMA - TETAP ADA)
+  // 1. KHS (SEMESTER GRADE REPORT) FEATURES
   // ==========================================
   async getKhs(studentId: number, semester: string): Promise<KhsResponseDto> {
     const rawNilai = await this.prisma.nilai.findMany({
@@ -140,7 +140,7 @@ export class AcademicService {
   }
 
   // ==========================================
-  // 2. FITUR TRANSKRIP (BARU - DENGAN HTML TABLE)
+  // 2. TRANSCRIPT FEATURES WITH HTML TABLE
   // ==========================================
   
    async getTranskrip(mahasiswaId: number) {
@@ -163,8 +163,8 @@ export class AcademicService {
       const kodeMK = record.mataKuliah.kode;
       const existing = bestGradesMap.get(kodeMK);
       
-      // PERBAIKAN BUG DISINI:
-      // Pastikan nama properti yang dicek ('existing.indeksNilai') sama dengan yang disimpan
+      // BUG FIX HERE:
+      // Ensure the checked property name ('existing.indeksNilai') matches what is stored
       if (
         !existing ||
         (record.indeksNilai !== null &&
@@ -175,7 +175,7 @@ export class AcademicService {
           matakuliah: record.mataKuliah.name,
           sks: record.mataKuliah.sks,
           nilaiHuruf: record.nilaiHuruf,
-          indeksNilai: record.indeksNilai, // GANTI DARI 'indeks' KE 'indeksNilai' AGAR KONSISTEN
+          indeksNilai: record.indeksNilai, // CHANGED FROM 'indeks' TO 'indeksNilai' FOR CONSISTENCY
           semester: record.semester,
         });
       }
@@ -188,7 +188,7 @@ export class AcademicService {
 
     transkripList.forEach((item) => {
       totalSKS += item.sks;
-      totalBobot += item.sks * item.indeksNilai; // Sesuaikan akses properti
+      totalBobot += item.sks * item.indeksNilai; // Adjust property access
     });
 
     const ipk = totalSKS > 0 ? (totalBobot / totalSKS).toFixed(2) : '0.00';
@@ -210,7 +210,7 @@ export class AcademicService {
     };
   }
 
-  // Helper Predikat
+  // Helper method for GPA predicate
   private getPredikat(ipk: number): string {
     if (ipk >= 3.51) return 'Dengan Pujian (Cumlaude)';
     if (ipk >= 3.01) return 'Sangat Memuaskan';
@@ -218,11 +218,11 @@ export class AcademicService {
     return 'Cukup';
   }
 
-  // 3. GENERATE HTML REPORT UNTUK TRANSKRIP (BARU)
+  // 3. GENERATE HTML REPORT FOR TRANSCRIPT (NEW)
   async generateTranskripHtml(mahasiswaId: number): Promise<string> {
     const data = await this.getTranskrip(mahasiswaId);
 
-    // Generate baris tabel
+    // Generate table rows
     const rows = data.transkrip.map((item, index) => {
       const mutu = (item.sks * item.indeks).toFixed(2);
       return `
@@ -238,7 +238,7 @@ export class AcademicService {
       `;
     }).join('');
 
-    // Template HTML
+    // HTML Template
     return `
       <!DOCTYPE html>
       <html>

@@ -32,7 +32,7 @@ describe('AuthService', () => {
     prisma = module.get<PrismaService>(PrismaService);
   });
 
-  it('WB-AUTH-01: Login berhasil', async () => {
+  it('WB-AUTH-01: Login successful', async () => {
     const mockUser = { id: 1, nim: '20021101', password: 'hashed', role: 'MAHASISWA' };
     mockPrisma.user.findUnique.mockResolvedValue(mockUser);
     jest.spyOn(bcrypt, 'compare').mockImplementation(() => Promise.resolve(true));
@@ -42,12 +42,12 @@ describe('AuthService', () => {
     expect(result).toHaveProperty('access_token');
   });
 
-  it('WB-AUTH-02: Login gagal (User tidak ditemukan)', async () => {
+  it('WB-AUTH-02: Login failed (User not found)', async () => {
     mockPrisma.user.findUnique.mockResolvedValue(null);
     await expect(service.login({ nim: '999', password: '123' })).rejects.toThrow(UnauthorizedException);
   });
 
-  it('WB-AUTH-03: Login gagal (Password salah)', async () => {
+  it('WB-AUTH-03: Login failed (Wrong password)', async () => {
     const mockUser = { id: 1, nim: '20021101', password: 'hashed' };
     mockPrisma.user.findUnique.mockResolvedValue(mockUser);
     jest.spyOn(bcrypt, 'compare').mockImplementation(() => Promise.resolve(false));
@@ -72,7 +72,7 @@ describe('AcademicService', () => {
     service = module.get<AcademicService>(AcademicService);
   });
 
-  // Mock User Lengkap (Fix TypeError reading 'name')
+  // Complete Mock User (Fix TypeError reading 'name')
   const mockMahasiswaLengkap = { 
     id: 1, 
     name: 'Ahmad', 
@@ -89,8 +89,8 @@ describe('AcademicService', () => {
     ]);
 
     const result = await service.getTranskrip(1);
-    expect(result.transkrip.length).toBe(1); // Duplikat hilang
-    expect(result.transkrip[0].nilaiHuruf).toBe('A'); // Nilai terbaik diambil
+    expect(result.transkrip.length).toBe(1); // Duplicates removed
+    expect(result.transkrip[0].nilaiHuruf).toBe('A'); // Best grade taken
   });
 
   it('WB-ACAD-02: Hitung IPK', async () => {
@@ -104,7 +104,7 @@ describe('AcademicService', () => {
   });
 
   it('WB-ACAD-03: Get KHS (JSON)', async () => {
-    // Mock Data KHS
+    // Mock KHS Data
     const mockNilaiKHS = [
       { 
         mataKuliah: { kode: 'IF201', name: 'Web', sks: 3 }, 
@@ -124,7 +124,7 @@ describe('AcademicService', () => {
   });
 
   it('WB-ACAD-04: Download KHS (HTML)', async () => {
-    // Mock Data KHS untuk HTML
+    // Mock KHS Data for HTML
     const mockNilaiKHS = [
       { 
         mataKuliah: { kode: 'IF201', name: 'Web', sks: 3 }, 
@@ -138,12 +138,12 @@ describe('AcademicService', () => {
 
     const result = await service.generateKhsHtml(1, '2024 Ganjil');
     
-    // Assert response adalah string HTML valid
+    // Assert response is a valid HTML string
     expect(typeof result).toBe('string');
     expect(result).toContain('<!DOCTYPE html>');
     expect(result).toContain('KARTU HASIL STUDI (KHS)');
-    expect(result).toContain('Ahmad'); // Nama mahasiswa muncul
-    expect(result).toContain('IF201'); // Kode MK muncul
+    expect(result).toContain('Ahmad'); // Student name appears
+    expect(result).toContain('IF201'); // Course code appears
   });
 });
 
@@ -327,24 +327,24 @@ describe('KrsService', () => {
     expect(result).toBeDefined();
   });
 
-  it('WB-KRS-03: approveKrs() - Branch: Role bukan Dosen', async () => {
-    // Skenario: User mencoba approve tapi rolenya MAHASISWA
+  it('WB-KRS-03: approveKrs() - Branch: Role is not Lecturer', async () => {
+    // Scenario: User tries to approve but their role is STUDENT
     const mahasiswaId = 1;
     const krsId = 5;
     
-    // Mock user lookup jika service melakukan validasi user by ID
+    // Mock user lookup if service validates user by ID
     mockPrisma.user.findUnique.mockResolvedValue({ id: mahasiswaId, role: Role.MAHASISWA });
 
-    // Note: Anda mungkin perlu menyesuaikan implementasi service `approveKrs` 
-    // agar mengecek role user sebelum update.
+    // Note: You may need to adjust service `approveKrs` implementation
+    // to check user role before updating.
     await expect(service.approveKrs(mahasiswaId, krsId, 'Ok')).rejects.toThrow(ForbiddenException);
   });
 
-  it('WB-KRS-04: approveKrs() - Path: Berhasil Approve', async () => {
-    const dosenId = 2; // ID Dosen
+  it('WB-KRS-04: approveKrs() - Path: Successfully Approved', async () => {
+    const dosenId = 2; // Lecturer ID
     const krsId = 1;
     
-    // Mock user lookup as Dosen
+    // Mock user lookup as Lecturer
     mockPrisma.user.findUnique.mockResolvedValue({ id: dosenId, role: Role.DOSEN });
     mockPrisma.kRS.update.mockResolvedValue({ id: krsId, status: StatusKRS.DISETUJUI });
     

@@ -13,22 +13,22 @@ export class PresensiService {
   constructor(private prisma: PrismaService) {}
 
   // ============================================
-  // 1. GENERATE SESSION + TOKEN (DOSEN)
+  // 1. GENERATE SESSION + TOKEN (LECTURER)
   // ============================================
   async createSession(dto: CreatePresensiDto, user: User) {
     if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
 
-    // Validasi Logika Kelas/UAS (Sama seperti sebelumnya)
+    // Validate Logic for Class/Final Exam (Same as before)
     if (dto.type === SessionType.KELAS) {
       if (!dto.kelasPerkuliahanId) throw new BadRequestException('ID Kelas wajib diisi');
       
-      // Validasi Pemilik Kelas
+      // Validate Class Owner
       if (user.role === Role.DOSEN) {
         const kelas = await this.prisma.kelasPerkuliahan.findUnique({ where: { id: dto.kelasPerkuliahanId }});
         if (!kelas || kelas.dosenId !== user.id) throw new ForbiddenException('Bukan kelas Anda.');
       }
 
-      // Validasi Max 16
+      // Validate Max 16 sessions
       const count = await this.prisma.presensiSession.count({
         where: { kelasPerkuliahanId: dto.kelasPerkuliahanId, type: SessionType.KELAS },
       });
@@ -43,7 +43,7 @@ export class PresensiService {
       if (exists) throw new BadRequestException('UAS sudah dibuat.');
     }
 
-    // GENERATE TOKEN (8 HURUF BESAR & ANGKA)
+    // GENERATE TOKEN (8 UPPERCASE LETTERS & NUMBERS)
     const token = this.generateToken(8);
 
     return this.prisma.presensiSession.create({
@@ -53,13 +53,13 @@ export class PresensiService {
         kelasPerkuliahanId: dto.kelasPerkuliahanId || null,
         date: new Date(),
         isOpen: true,
-        token: token, // Simpan token
+        token: token, // Save token
       },
     });
   }
 
   // ============================================
-  // 2. SUBMIT VIA TOKEN (MAHASISWA)
+  // 2. SUBMIT VIA TOKEN (STUDENT)
   // ============================================
   async submitPresensi(dto: SubmitPresensiDto, mahasiswa: User) {
     const session = await this.prisma.presensiSession.findUnique({
@@ -68,12 +68,12 @@ export class PresensiService {
     if (!session) throw new NotFoundException('Sesi tidak ditemukan');
     if (!session.isOpen) throw new BadRequestException('Sesi sudah ditutup.');
 
-    // VALIDASI TOKEN
+    // VALIDATE TOKEN
     if (session.token !== dto.token) {
       throw new BadRequestException('Token presensi salah!');
     }
 
-    // Validasi KRS & UAS Threshold
+    // Validate KRS & Final Exam Threshold
     if (session.type !== SessionType.EVENT) {
       const krs = await this.prisma.kRS.findFirst({
         where: { 
@@ -97,7 +97,7 @@ export class PresensiService {
   }
 
   // ============================================
-  // 3. INPUT MANUAL (DOSEN)
+  // 3. MANUAL INPUT (LECTURER)
   // ============================================
   async manualPresensi(dto: ManualPresensiDto, dosen: User) {
     const session = await this.prisma.presensiSession.findUnique({
@@ -118,7 +118,7 @@ export class PresensiService {
       throw new NotFoundException('Mahasiswa invalid.');
     }
 
-    // Upsert: Tandai method sebagai "MANUAL"
+    // Upsert: Mark method as "MANUAL"
     return this.prisma.presensiRecord.upsert({
       where: {
         sessionId_mahasiswaId: { sessionId: dto.sessionId, mahasiswaId: dto.mahasiswaId }
@@ -130,7 +130,7 @@ export class PresensiService {
 
   // --- Helpers ---
 
-  // Helper Generate Token
+  // Helper: Generate Token
   private generateToken(length: number): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
