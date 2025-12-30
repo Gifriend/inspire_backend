@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { PengumumanService } from './pengumuman.service';
 import { PengumumanController } from './pengumuman.controller';
-import { PrismaService } from '../prisma/prisma.service'; // sesuaikan
+import { PrismaModule } from '../prisma/prsima.module';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [PengumumanController],
-  providers: [PengumumanService, PrismaService],
+  providers: [PengumumanService],
 })
 export class PengumumanModule {}
