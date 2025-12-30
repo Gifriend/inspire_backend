@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Req } from '@nestjs/common';
 import { ElearningService } from './elearning.service';
 import { 
   CreateSessionDto, 
@@ -20,8 +20,8 @@ export class ElearningController {
 
   // POST: /elearning/material
   @Post('material')
-  async createMaterial(@Body() dto: CreateMaterialDto) {
-    return this.elearningService.createMaterial(dto);
+  async createMaterial(@Body() dto: CreateMaterialDto, @Req() req) {
+    return this.elearningService.createMaterial(dto, req.user);
   }
 
   // POST: /elearning/assignment
@@ -32,8 +32,8 @@ export class ElearningController {
 
   // POST: /elearning/assignment/submit
   @Post('assignment/submit')
-  async submitAssignment(@Body() dto: SubmitAssignmentDto) {
-    return this.elearningService.submitAssignment(dto);
+  async submitAssignment(@Body() dto: SubmitAssignmentDto, @Req() req) {
+    return this.elearningService.submitAssignment(dto, req.user);
   }
 
   // POST: /elearning/quiz

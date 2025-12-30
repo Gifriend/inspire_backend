@@ -18,16 +18,17 @@ export class KrsService {
     // Cek apakah sudah ada KRS
     let krs = await this.prisma.kRS.findUnique({
       where: {
-        mahasiswaId_semester: { // Composite key dari schema prisma
+        mahasiswaId_semester: {
+          // Composite key dari schema prisma
           mahasiswaId,
           semester,
         },
       },
       include: {
         kelasPerkuliahan: {
-          include: { mataKuliah: true, dosen: true }
-        }
-      }
+          include: { mataKuliah: true, dosen: true },
+        },
+      },
     });
 
     // Jika belum ada, buat baru
@@ -41,9 +42,9 @@ export class KrsService {
         },
         include: {
           kelasPerkuliahan: {
-            include: { mataKuliah: true, dosen: true }
-          }
-        }
+            include: { mataKuliah: true, dosen: true },
+          },
+        },
       });
     }
 
@@ -52,7 +53,9 @@ export class KrsService {
 
   async addClassToKrs(mahasiswaId: number, dto: AddClassDto) {
     // 1. Validasi Mahasiswa
-    const user = await this.prisma.user.findUnique({ where: { id: mahasiswaId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: mahasiswaId },
+    });
     if (!user || user.role !== 'MAHASISWA') {
       throw new ForbiddenException('Hanya mahasiswa yang bisa tambah kelas');
     }
@@ -60,7 +63,7 @@ export class KrsService {
     // 2. Ambil Kelas yang mau diambil untuk cek SKS & Kapasitas
     const targetKelas = await this.prisma.kelasPerkuliahan.findUnique({
       where: { id: dto.kelasId }, // Asumsi DTO kirim ID (Int) bukan string
-      include: { mataKuliah: true }
+      include: { mataKuliah: true },
     });
 
     if (!targetKelas) throw new NotFoundException('Kelas tidak ditemukan');
@@ -69,11 +72,15 @@ export class KrsService {
     const krs = await this.getOrCreateKrs(mahasiswaId, dto.semester);
 
     if (krs.status !== StatusKRS.DRAFT) {
-      throw new BadRequestException('KRS sudah diajukan/disetujui, tidak bisa tambah kelas');
+      throw new BadRequestException(
+        'KRS sudah diajukan/disetujui, tidak bisa tambah kelas',
+      );
     }
 
     // 4. Cek Duplikasi (Apakah kelas ini sudah diambil?)
-    const alreadyExists = krs.kelasPerkuliahan.some(k => k.id === dto.kelasId);
+    const alreadyExists = krs.kelasPerkuliahan.some(
+      (k) => k.id === dto.kelasId,
+    );
     if (alreadyExists) {
       throw new BadRequestException('Kelas sudah terdaftar di KRS Anda');
     }
@@ -85,10 +92,10 @@ export class KrsService {
       data: {
         totalSKS: { increment: targetKelas.mataKuliah.sks },
         kelasPerkuliahan: {
-          connect: { id: dto.kelasId }
-        }
+          connect: { id: dto.kelasId },
+        },
       },
-      include: { kelasPerkuliahan: true }
+      include: { kelasPerkuliahan: true },
     });
 
     return updatedKrs;
@@ -102,7 +109,9 @@ export class KrsService {
     }
 
     if (krs.kelasPerkuliahan.length === 0) {
-      throw new BadRequestException('Pilih minimal 1 mata kuliah sebelum submit');
+      throw new BadRequestException(
+        'Pilih minimal 1 mata kuliah sebelum submit',
+      );
     }
 
     return this.prisma.kRS.update({
@@ -110,7 +119,7 @@ export class KrsService {
       data: {
         status: StatusKRS.DIAJUKAN,
         tanggalPengajuan: new Date(),
-      }
+      },
     });
   }
 
@@ -121,15 +130,24 @@ export class KrsService {
   // --- FITUR DOSEN ---
 
   async approveKrs(dosenId: number, krsId: number, catatan?: string) {
-    // Validasi Dosen (Optional jika sudah dihandle Guard)
-    
+    // Validasi Dosen: Pastikan user adalah DOSEN atau KOORPRODI
+    const dosen = await this.prisma.user.findUnique({
+      where: { id: dosenId },
+    });
+
+    if (!dosen || (dosen.role !== 'DOSEN' && dosen.role !== 'KOORPRODI')) {
+      throw new ForbiddenException(
+        'Hanya Dosen atau Koorprodi yang dapat menyetujui KRS',
+      );
+    }
+
     return this.prisma.kRS.update({
       where: { id: krsId },
       data: {
         status: StatusKRS.DISETUJUI,
         tanggalPersetujuan: new Date(),
         catatanDosen: catatan || 'Disetujui',
-      }
+      },
     });
   }
 
@@ -139,7 +157,7 @@ export class KrsService {
       data: {
         status: StatusKRS.DITOLAK,
         catatanDosen: catatan,
-      }
+      },
     });
   }
 
@@ -150,7 +168,7 @@ export class KrsService {
         status: StatusKRS.DRAFT,
         catatanDosen: catatan,
         tanggalPersetujuan: null,
-      }
+      },
     });
   }
 }

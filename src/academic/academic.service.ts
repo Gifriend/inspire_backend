@@ -1,20 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { KhsResponseDto } from './dto/academic.dto'; // Pastikan path ini sesuai
-
-// Setup Prisma (Sesuai kode Anda)
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AcademicService {
+  constructor(private prisma: PrismaService) {}
   
   // ==========================================
   // 1. FITUR KHS (LAMA - TETAP ADA)
   // ==========================================
   async getKhs(studentId: number, semester: string): Promise<KhsResponseDto> {
-    const rawNilai = await prisma.nilai.findMany({
+    const rawNilai = await this.prisma.nilai.findMany({
       where: {
         mahasiswaId: studentId,
         semester: semester,
@@ -27,7 +23,7 @@ export class AcademicService {
     });
 
     if (!rawNilai.length) {
-      const mhs = await prisma.user.findUnique({ 
+      const mhs = await this.prisma.user.findUnique({ 
         where: { id: studentId },
         include: { prodi: true }
       });
@@ -147,16 +143,15 @@ export class AcademicService {
   // 2. FITUR TRANSKRIP (BARU - DENGAN HTML TABLE)
   // ==========================================
   
-  // Logic Pengambilan Data JSON (Sudah Benar)
-  async getTranskrip(mahasiswaId: number) {
-    const mahasiswa = await prisma.user.findUnique({
+   async getTranskrip(mahasiswaId: number) {
+    const mahasiswa = await this.prisma.user.findUnique({
       where: { id: mahasiswaId },
       include: { prodi: true, fakultas: true },
     });
 
     if (!mahasiswa) throw new NotFoundException('Mahasiswa tidak ditemukan');
 
-    const allNilai = await prisma.nilai.findMany({
+    const allNilai = await this.prisma.nilai.findMany({
       where: { mahasiswaId: mahasiswaId, status: 'SUDAH_ADA' },
       include: { mataKuliah: true },
       orderBy: { semester: 'asc' },
@@ -168,7 +163,8 @@ export class AcademicService {
       const kodeMK = record.mataKuliah.kode;
       const existing = bestGradesMap.get(kodeMK);
       
-      // Ambil nilai terbaik (Indeks tertinggi)
+      // PERBAIKAN BUG DISINI:
+      // Pastikan nama properti yang dicek ('existing.indeksNilai') sama dengan yang disimpan
       if (
         !existing ||
         (record.indeksNilai !== null &&
@@ -179,7 +175,7 @@ export class AcademicService {
           matakuliah: record.mataKuliah.name,
           sks: record.mataKuliah.sks,
           nilaiHuruf: record.nilaiHuruf,
-          indeks: record.indeksNilai,
+          indeksNilai: record.indeksNilai, // GANTI DARI 'indeks' KE 'indeksNilai' AGAR KONSISTEN
           semester: record.semester,
         });
       }
@@ -192,7 +188,7 @@ export class AcademicService {
 
     transkripList.forEach((item) => {
       totalSKS += item.sks;
-      totalBobot += item.sks * item.indeks;
+      totalBobot += item.sks * item.indeksNilai; // Sesuaikan akses properti
     });
 
     const ipk = totalSKS > 0 ? (totalBobot / totalSKS).toFixed(2) : '0.00';
