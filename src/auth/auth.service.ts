@@ -95,6 +95,52 @@ export class AuthService {
     });
   }
 
+  async getProfile(userId: number) {
+    const user = await this.prisma.user.findUnique({ 
+      where: { id: userId },
+      select: {
+        id: true,
+        nim: true,
+        nip: true,
+        name: true,
+        email: true,
+        telepon: true,
+        alamat: true,
+        tanggalLahir: true,
+        gender: true,
+        role: true,
+        status: true,
+        photo: true,
+        fakultasId: true,
+        prodiId: true,
+        createdAt: true,
+        updatedAt: true,
+        // Exclude password
+        fakultas: {
+          select: {
+            id: true,
+            name: true,
+            kode: true,
+          }
+        },
+        prodi: {
+          select: {
+            id: true,
+            name: true,
+            kode: true,
+            jenjang: true,
+          }
+        }
+      }
+    });
+    
+    if (!user) {
+      throw new UnauthorizedException('User tidak ditemukan');
+    }
+    
+    return user;
+  }
+
   async findAll() {
     return this.prisma.user.findMany();
   }
