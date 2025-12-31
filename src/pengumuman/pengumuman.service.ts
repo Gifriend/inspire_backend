@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service'; 
 import { CreatePengumumanDto } from './dto/create-pengumuman.dto';
 import { User, Role } from '@prisma/client';
@@ -87,5 +87,31 @@ export class PengumumanService {
       },
       orderBy: { createdAt: 'desc' }
     });
+  }
+
+  async findOne(id: number) {
+    const pengumuman = await this.prisma.pengumuman.findUnique({
+      where: { id },
+      include: {
+        dosen: {
+          select: {
+            name: true,
+            nip: true,
+          }
+        },
+        kelas: {
+          select: {
+            nama: true,
+            kode: true,
+          }
+        }
+      }
+    });
+
+    if (!pengumuman) {
+      throw new NotFoundException(`Pengumuman dengan ID ${id} tidak ditemukan`);
+    }
+
+    return pengumuman;
   }
 }

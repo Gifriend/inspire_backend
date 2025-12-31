@@ -3,8 +3,10 @@ import {
   Post,
   Get,
   Body,
+  Param,
   UseGuards,
   ForbiddenException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { PengumumanService } from './pengumuman.service';
@@ -38,5 +40,11 @@ export class PengumumanController {
       throw new ForbiddenException('Hanya mahasiswa yang dapat mengakses ini');
     }
     return this.pengumumanService.findAllForMahasiswa(user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.pengumumanService.findOne(id);
   }
 }
