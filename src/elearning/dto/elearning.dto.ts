@@ -48,3 +48,13 @@ export class CreateQuizDto {
   sessionId: string;
   questions: CreateQuestionDto[];
 }
+
+export class QuizAnswerDto {
+  questionId: number;
+  answer: string;
+}
+
+export class SubmitQuizDto {
+  quizId: number;
+  answers: QuizAnswerDto[];
+}

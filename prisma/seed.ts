@@ -177,23 +177,184 @@ async function main() {
   const sessions = await prisma.session.findMany({ where: { kelasPerkuliahanId: kelasWebSem3.id }});
   const sessionIds = sessions.map(s => s.id);
   if (sessionIds.length) {
+    // Cleanup submissions first (foreign key constraint)
+    const assignments = await prisma.assignment.findMany({ where: { sessionId: { in: sessionIds }}});
+    const assignmentIds = assignments.map(a => a.id);
+    await prisma.submission.deleteMany({ where: { assignmentId: { in: assignmentIds }}});
+    
+    // Cleanup quiz attempts (foreign key constraint)
+    const quizzes = await prisma.quiz.findMany({ where: { sessionId: { in: sessionIds }}});
+    const quizIds = quizzes.map(q => q.id);
+    await prisma.quizAttempt.deleteMany({ where: { quizId: { in: quizIds }}});
+    await prisma.question.deleteMany({ where: { quizId: { in: quizIds }}});
+    
     await prisma.material.deleteMany({ where: { sessionId: { in: sessionIds }}});
     await prisma.assignment.deleteMany({ where: { sessionId: { in: sessionIds }}});
+    await prisma.quiz.deleteMany({ where: { sessionId: { in: sessionIds }}});
     await prisma.session.deleteMany({ where: { id: { in: sessionIds }}});
   }
 
-  await prisma.session.create({
+  // Session 1: HTML & CSS
+  const session1 = await prisma.session.create({
     data: {
-      title: 'Pertemuan 1: HTML & CSS', weekNumber: 1, kelasPerkuliahanId: kelasWebSem3.id,
+      title: 'Pertemuan 1: HTML & CSS', 
+      description: 'Pengenalan dasar HTML dan CSS',
+      weekNumber: 1, 
+      kelasPerkuliahanId: kelasWebSem3.id,
       materials: {
         create: [
-          { title: 'Slide HTML', type: 'FILE', fileUrl: 'https://example.com/slide.pdf' },
-          { title: 'Video Intro', type: 'TEXT', content: 'https://youtube.com/...' }
+          { 
+            title: 'Slide HTML Dasar', 
+            type: 'FILE', 
+            fileUrl: 'https://example.com/html-slides.pdf' 
+          },
+          { 
+            title: 'Video Tutorial CSS', 
+            type: 'TEXT', 
+            content: 'Link video: https://youtube.com/css-tutorial' 
+          },
+          {
+            title: 'Panduan Lengkap HTML & CSS',
+            type: 'HYBRID',
+            content: 'Materi lengkap dapat diunduh di link berikut',
+            fileUrl: 'https://example.com/html-css-guide.pdf'
+          }
         ]
       },
       assignments: {
         create: {
-          title: 'Buat Web Profil', deadline: new Date(new Date().setDate(new Date().getDate() + 7)),
+          title: 'Tugas 1: Buat Web Profil Sederhana',
+          description: 'Buat halaman web profil pribadi menggunakan HTML dan CSS',
+          deadline: new Date(new Date().setDate(new Date().getDate() + 7)),
+          allowLate: true
+        }
+      }
+    }
+  });
+
+  // Get assignment from session 1 for submission
+  const assignment1 = await prisma.assignment.findFirst({
+    where: { sessionId: session1.id }
+  });
+
+  // Create submission for Ahmad Mahasiswa
+  if (assignment1) {
+    await prisma.submission.create({
+      data: {
+        studentId: mahasiswa.id,
+        assignmentId: assignment1.id,
+        fileUrl: 'https://example.com/ahmad-profile.zip',
+        textContent: 'Sudah saya kerjakan sesuai instruksi',
+        grade: 85
+      }
+    });
+  }
+
+  // Session 2: JavaScript Dasar
+  const session2 = await prisma.session.create({
+    data: {
+      title: 'Pertemuan 2: JavaScript Dasar',
+      description: 'Mempelajari dasar-dasar pemrograman JavaScript',
+      weekNumber: 2,
+      kelasPerkuliahanId: kelasWebSem3.id,
+      materials: {
+        create: [
+          {
+            title: 'Slide JavaScript',
+            type: 'FILE',
+            fileUrl: 'https://example.com/js-slides.pdf'
+          }
+        ]
+      },
+      quizzes: {
+        create: {
+          title: 'Quiz 1: HTML & CSS Basics',
+          duration: 30,
+          startTime: new Date(new Date().setDate(new Date().getDate() - 1)),
+          endTime: new Date(new Date().setDate(new Date().getDate() + 7)),
+          gradingMethod: 'HIGHEST_GRADE',
+          questions: {
+            create: [
+              {
+                text: 'Apa kepanjangan dari HTML?',
+                type: 'MULTIPLE_CHOICE',
+                options: ['HyperText Markup Language', 'HighText Modern Language', 'HyperTransfer Markup Link', 'None of the above'],
+                correctAnswer: 'HyperText Markup Language',
+                points: 25
+              },
+              {
+                text: 'CSS digunakan untuk apa?',
+                type: 'MULTIPLE_CHOICE',
+                options: ['Styling halaman web', 'Database', 'Programming logic', 'Server management'],
+                correctAnswer: 'Styling halaman web',
+                points: 25
+              },
+              {
+                text: 'Tag HTML untuk membuat paragraf adalah?',
+                type: 'MULTIPLE_CHOICE',
+                options: ['<p>', '<para>', '<paragraph>', '<text>'],
+                correctAnswer: '<p>',
+                points: 25
+              },
+              {
+                text: 'HTML adalah bahasa pemrograman. Benar atau salah?',
+                type: 'TRUE_FALSE',
+                options: ['Benar', 'Salah'],
+                correctAnswer: 'Salah',
+                points: 25
+              }
+            ]
+          }
+        }
+      }
+    }
+  });
+
+  // Get quiz from session 2
+  const quiz1 = await prisma.quiz.findFirst({
+    where: { sessionId: session2.id },
+    include: { questions: true }
+  });
+
+  // Create quiz attempt for Ahmad (score 75 - answered 3 out of 4 correctly)
+  if (quiz1) {
+    await prisma.quizAttempt.create({
+      data: {
+        studentId: mahasiswa.id,
+        quizId: quiz1.id,
+        score: 75,
+        finishedAt: new Date()
+      }
+    });
+  }
+
+  // Session 3: JavaScript Lanjutan
+  await prisma.session.create({
+    data: {
+      title: 'Pertemuan 3: JavaScript DOM Manipulation',
+      description: 'Belajar memanipulasi DOM dengan JavaScript',
+      weekNumber: 3,
+      kelasPerkuliahanId: kelasWebSem3.id,
+      materials: {
+        create: [
+          {
+            title: 'Materi DOM Manipulation',
+            type: 'FILE',
+            fileUrl: 'https://example.com/dom-slides.pdf'
+          },
+          {
+            title: 'Contoh Code DOM',
+            type: 'TEXT',
+            content: 'document.querySelector("#myId").innerHTML = "Hello World"'
+          }
+        ]
+      },
+      assignments: {
+        create: {
+          title: 'Tugas 2: Membuat Todo List App',
+          description: 'Buat aplikasi todo list sederhana dengan JavaScript',
+          deadline: new Date(new Date().setDate(new Date().getDate() + 14)),
+          allowLate: false
         }
       }
     }

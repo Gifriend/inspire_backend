@@ -1,12 +1,14 @@
-import { Controller, Get, Post, Body, Param, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Req, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { ElearningService } from './elearning.service';
 import { 
   CreateSessionDto, 
   CreateMaterialDto, 
   CreateAssignmentDto, 
   SubmitAssignmentDto, 
-  CreateQuizDto 
+  CreateQuizDto,
+  SubmitQuizDto 
 } from './dto/elearning.dto';
+import { JwtAuthGuard } from '../auth/strategy/jwt-auth.guard';
 
 @Controller('elearning')
 export class ElearningController {
@@ -46,5 +48,53 @@ export class ElearningController {
   @Get('course/:kelasId')
   async getCourseContent(@Param('kelasId') kelasId: string) {
     return this.elearningService.getCourseContent(Number(kelasId));
+  }
+
+  // GET: /elearning/course-detail/:kelasId - Get course detail with complete information
+  @UseGuards(JwtAuthGuard)
+  @Get('course-detail/:kelasId')
+  async getCourseDetail(@Param('kelasId', ParseIntPipe) kelasId: number) {
+    return this.elearningService.getCourseDetail(kelasId);
+  }
+
+  // POST: /elearning/quiz/submit
+  @UseGuards(JwtAuthGuard)
+  @Post('quiz/submit')
+  async submitQuiz(@Body() dto: SubmitQuizDto, @Req() req) {
+    return this.elearningService.submitQuiz(dto, req.user);
+  }
+
+  // GET: /elearning/courses - Get student's enrolled courses
+  @UseGuards(JwtAuthGuard)
+  @Get('courses')
+  async getStudentCourses(@Req() req) {
+    return this.elearningService.getStudentCourses(req.user.id);
+  }
+
+  // GET: /elearning/assignment/:id - Get assignment detail with submission status
+  @UseGuards(JwtAuthGuard)
+  @Get('assignment/:id')
+  async getAssignmentDetail(
+    @Param('id') id: string,
+    @Req() req
+  ) {
+    return this.elearningService.getAssignmentDetail(id, req.user.id);
+  }
+
+  // GET: /elearning/quiz/:id - Get quiz detail with attempt history
+  @UseGuards(JwtAuthGuard)
+  @Get('quiz/:id')
+  async getQuizDetail(
+    @Param('id') id: string,
+    @Req() req
+  ) {
+    return this.elearningService.getQuizDetail(id, req.user.id);
+  }
+
+  // GET: /elearning/material/:id - Get material detail
+  @UseGuards(JwtAuthGuard)
+  @Get('material/:id')
+  async getMaterialDetail(@Param('id') id: string) {
+    return this.elearningService.getMaterialDetail(id);
   }
 }

@@ -183,4 +183,209 @@ export class ElearningService {
       }
     });
   }
+
+  // 7b. Get Course Detail (Complete Course Information)
+  async getCourseDetail(kelasPerkuliahanId: number) {
+    const kelas = await this.prisma.kelasPerkuliahan.findUnique({
+      where: { id: kelasPerkuliahanId },
+      include: {
+        mataKuliah: {
+          select: {
+            id: true,
+            name: true,
+            kode: true,
+            sks: true,
+            semester: true,
+            jenisMK: true,
+            deskripsi: true
+          }
+        },
+        dosen: {
+          select: {
+            id: true,
+            name: true,
+            nip: true,
+            email: true,
+            photo: true
+          }
+        },
+        sessions: {
+          orderBy: { weekNumber: 'asc' },
+          include: {
+            materials: true,
+            assignments: {
+              include: {
+                _count: {
+                  select: { submissions: true }
+                }
+              }
+            },
+            quizzes: {
+              include: {
+                _count: {
+                  select: { attempts: true }
+                }
+              }
+            }
+          }
+        },
+        _count: {
+          select: {
+            krs: true
+          }
+        }
+      }
+    });
+
+    if (!kelas) {
+      throw new NotFoundException('Kelas perkuliahan tidak ditemukan');
+    }
+
+    return kelas;
+  }
+
+  // 8. Get Student's Enrolled Courses
+  async getStudentCourses(studentId: number) {
+    // Get approved KRS to find enrolled classes
+    const krs = await this.prisma.kRS.findMany({
+      where: {
+        mahasiswaId: studentId,
+        status: 'DISETUJUI'
+      },
+      select: {
+        kelasPerkuliahanId: true
+      }
+    });
+
+    const kelasIds = krs
+      .map(k => k.kelasPerkuliahanId)
+      .filter((id): id is number => id !== null);
+
+    return this.prisma.kelasPerkuliahan.findMany({
+      where: {
+        id: { in: kelasIds }
+      },
+      include: {
+        mataKuliah: true,
+        dosen: {
+          select: {
+            id: true,
+            name: true,
+            nip: true,
+            photo: true
+          }
+        }
+      }
+    });
+  }
+
+  // 9. Get Assignment Detail with Submission Status
+  async getAssignmentDetail(assignmentId: string, studentId: number) {
+    const assignment = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: {
+        session: {
+          include: {
+            kelasPerkuliahan: {
+              include: {
+                mataKuliah: true,
+                dosen: {
+                  select: {
+                    id: true,
+                    name: true,
+                    nip: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment tidak ditemukan');
+    }
+
+    // Get student's submission if exists
+    const submission = await this.prisma.submission.findFirst({
+      where: {
+        assignmentId,
+        studentId
+      }
+    });
+
+    return {
+      ...assignment,
+      submission
+    };
+  }
+
+  // 10. Get Quiz Detail with Attempt History
+  async getQuizDetail(quizId: string, studentId: number) {
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        questions: true,
+        attempts: {
+          where: { studentId },
+          orderBy: { startedAt: 'desc' }
+        },
+        session: {
+          include: {
+            kelasPerkuliahan: {
+              include: {
+                mataKuliah: true,
+                dosen: {
+                  select: {
+                    id: true,
+                    name: true,
+                    nip: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!quiz) {
+      throw new NotFoundException('Quiz tidak ditemukan');
+    }
+
+    return quiz;
+  }
+
+  // 11. Get Material Detail
+  async getMaterialDetail(materialId: string) {
+    const material = await this.prisma.material.findUnique({
+      where: { id: materialId },
+      include: {
+        session: {
+          include: {
+            kelasPerkuliahan: {
+              include: {
+                mataKuliah: true,
+                dosen: {
+                  select: {
+                    id: true,
+                    name: true,
+                    nip: true,
+                    photo: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!material) {
+      throw new NotFoundException('Material tidak ditemukan');
+    }
+
+    return material;
+  }
 }
