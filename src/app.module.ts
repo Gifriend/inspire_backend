@@ -6,6 +6,7 @@ import { ElearningModule } from './elearning/elearning.module';
 import { AcademicModule } from './academic/academic.module';
 import { LoggerMiddleware } from './common/middleware/middleware';
 import { PresensiModule } from './presensi/presensi.module';
+import { NotificationModule } from './notification/notifications.module';
 
 @Module({
   imports: [
@@ -14,7 +15,8 @@ import { PresensiModule } from './presensi/presensi.module';
     AuthModule,
     ElearningModule,
     AcademicModule,
-    PresensiModule
+    PresensiModule,
+    NotificationModule
   ],
   controllers: [],
   providers: [],

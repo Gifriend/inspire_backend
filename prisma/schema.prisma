@@ -99,6 +99,7 @@ model User {
   nim          String?   @unique // Nullable untuk dosen/admin
   nip          String?   @unique // Untuk dosen/staff
   email        String    @unique
+  fcmToken    String?
   role         Role
   gender       Gender
   password     String

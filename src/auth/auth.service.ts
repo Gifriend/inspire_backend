@@ -15,16 +15,30 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
-    const { nim, password } = loginDto;
+    const { identifier, password, fcmToken } = loginDto;
+    console.log(' [AUTH] Login with FCM token:', fcmToken ? 'YES' : 'NO');
     
-    // TypeORM: findOne({ where: { nim } })
-    // Prisma: findUnique({ where: { nim } }) (karena nim @unique)
-    const user = await this.prisma.user.findUnique({ 
-      where: { nim } 
+    // Cari user berdasarkan NIM (mahasiswa) atau NIP (dosen)
+    const user = await this.prisma.user.findFirst({ 
+      where: {
+        OR: [
+          { nim: identifier },
+          { nip: identifier }
+        ]
+      }
     });
     
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new UnauthorizedException('NIM atau password salah');
+      throw new UnauthorizedException('NIM/NIP atau password salah');
+    }
+
+    // Update FCM Token jika diberikan
+    if (fcmToken) {
+      console.log(' [AUTH] Saving FCM token for user:', user.id, user.role);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { fcmToken }
+      });
     }
 
     // ✅ PAYLOAD LENGKAP
@@ -36,7 +50,7 @@ export class AuthService {
       role: user.role 
     };
     
-    const access_token = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const access_token = this.jwtService.sign(payload, { expiresIn: '1d' });
     const refresh_token = this.jwtService.sign(payload, { expiresIn: '7d' });
 
     return {
@@ -163,4 +177,21 @@ export class AuthService {
   async remove(id: number) {
     return this.prisma.user.delete({ where: { id } });
   }
+
+  async updateFcmToken(userId: number, token: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { 
+        fcmToken: token 
+      },
+    });
+  }
+
+  async removeFcmToken(userId: number) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { fcmToken: null },
+    });
+  }
+
 }

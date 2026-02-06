@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Put, Delete, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Put, Patch, Delete, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -61,5 +61,25 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async remove(@Param('id') id: string) {
     return this.authService.remove(+id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('fcm-token') 
+  @HttpCode(HttpStatus.OK)
+  async updateFcmToken(
+    @CurrentUser() user: any, 
+    @Body('token') token: string
+  ) {
+    // user.id didapat dari token JWT yang sudah login
+    return this.authService.updateFcmToken(user.id, token);
+  }
+
+  // Opsional: Endpoint Logout
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@CurrentUser() user: any) {
+    await this.authService.removeFcmToken(user.id);
+    return { message: 'Logout berhasil' };
   }
 }

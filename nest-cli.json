@@ -3,6 +3,16 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": true
-  }
+    "deleteOutDir": true,
+    "assets": [
+      {
+        "include": "**/*.json",
+        "exclude": "**/tsconfig*.json",
+        "watchAssets": true
+      }
+    ],
+    "watchAssets": true,
+    "plugins": []
+  },
+  "exclude": ["**/*.spec.ts", "test/**/*"]
 }

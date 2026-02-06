@@ -252,15 +252,16 @@ export class ElearningService {
         mahasiswaId: studentId,
         status: 'DISETUJUI'
       },
-      select: {
-        kelasPerkuliahanId: true
+      include: {
+        kelasPerkuliahan: true
       }
     });
 
-    const kelasIds = krs
-      .map(k => k.kelasPerkuliahanId)
-      .filter((id): id is number => id !== null);
+    // Flatten all classes from all approved KRS
+    const allClasses = krs.flatMap(k => k.kelasPerkuliahan);
+    const kelasIds = allClasses.map(kelas => kelas.id);
 
+    // Return unique classes with details
     return this.prisma.kelasPerkuliahan.findMany({
       where: {
         id: { in: kelasIds }
