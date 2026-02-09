@@ -1,6 +1,5 @@
-// ==========================================
-// DTOs (Data Transfer Objects)
-// ==========================================
+import { Type } from "class-transformer";
+import { IsString, IsArray, ValidateNested } from "class-validator";
 
 export class CreateSessionDto {
   title: string;
@@ -50,11 +49,20 @@ export class CreateQuizDto {
 }
 
 export class QuizAnswerDto {
-  questionId: number;
+  @IsString()
+  questionId: string;
+
+  @IsString()
   answer: string;
 }
 
+
 export class SubmitQuizDto {
-  quizId: number;
+  @IsString()
+  quizId: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuizAnswerDto)
   answers: QuizAnswerDto[];
 }

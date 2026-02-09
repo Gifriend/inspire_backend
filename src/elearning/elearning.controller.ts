@@ -1,12 +1,22 @@
-import { Controller, Get, Post, Body, Param, Req, ParseIntPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Req,
+  ParseIntPipe,
+  UseGuards,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ElearningService } from './elearning.service';
-import { 
-  CreateSessionDto, 
-  CreateMaterialDto, 
-  CreateAssignmentDto, 
-  SubmitAssignmentDto, 
+import {
+  CreateSessionDto,
+  CreateMaterialDto,
+  CreateAssignmentDto,
+  SubmitAssignmentDto,
   CreateQuizDto,
-  SubmitQuizDto 
+  SubmitQuizDto,
 } from './dto/elearning.dto';
 import { JwtAuthGuard } from '../auth/strategy/jwt-auth.guard';
 
@@ -60,7 +70,17 @@ export class ElearningController {
   // POST: /elearning/quiz/submit
   @UseGuards(JwtAuthGuard)
   @Post('quiz/submit')
-  async submitQuiz(@Body() dto: SubmitQuizDto, @Req() req) {
+  async submitQuiz(
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        transform: true,
+      }),
+    )
+    dto: SubmitQuizDto,
+    @Req() req,
+  ) {
     return this.elearningService.submitQuiz(dto, req.user);
   }
 
@@ -74,20 +94,14 @@ export class ElearningController {
   // GET: /elearning/assignment/:id - Get assignment detail with submission status
   @UseGuards(JwtAuthGuard)
   @Get('assignment/:id')
-  async getAssignmentDetail(
-    @Param('id') id: string,
-    @Req() req
-  ) {
+  async getAssignmentDetail(@Param('id') id: string, @Req() req) {
     return this.elearningService.getAssignmentDetail(id, req.user.id);
   }
 
   // GET: /elearning/quiz/:id - Get quiz detail with attempt history
   @UseGuards(JwtAuthGuard)
   @Get('quiz/:id')
-  async getQuizDetail(
-    @Param('id') id: string,
-    @Req() req
-  ) {
+  async getQuizDetail(@Param('id') id: string, @Req() req) {
     return this.elearningService.getQuizDetail(id, req.user.id);
   }
 

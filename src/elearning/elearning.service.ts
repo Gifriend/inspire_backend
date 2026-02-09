@@ -1,10 +1,18 @@
-import { Injectable, HttpException, HttpStatus, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { 
-  CreateSessionDto, 
-  CreateMaterialDto, 
-  CreateAssignmentDto, 
-  SubmitAssignmentDto, 
-  CreateQuizDto 
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  CreateSessionDto,
+  CreateMaterialDto,
+  CreateAssignmentDto,
+  SubmitAssignmentDto,
+  CreateQuizDto,
+  SubmitQuizDto,
 } from './dto/elearning.dto';
 import { Role, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,7 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class ElearningService {
   constructor(private prisma: PrismaService) {}
-  
+
   // 1. Create Session/Meeting
   async createSession(data: CreateSessionDto) {
     return this.prisma.session.create({
@@ -34,10 +42,16 @@ export class ElearningService {
 
     // Validate data
     if (data.type === 'FILE' && !data.fileUrl) {
-      throw new HttpException('File URL is required for FILE type', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'File URL is required for FILE type',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     if (data.type === 'TEXT' && !data.content) {
-      throw new HttpException('Content is required for TEXT type', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Content is required for TEXT type',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     return this.prisma.material.create({
@@ -66,7 +80,9 @@ export class ElearningService {
   // 4. Student Submits Assignment
   async submitAssignment(data: SubmitAssignmentDto, user: User) {
     if (user.role !== Role.MAHASISWA) {
-      throw new ForbiddenException('Hanya mahasiswa yang dapat mengumpulkan tugas.');
+      throw new ForbiddenException(
+        'Hanya mahasiswa yang dapat mengumpulkan tugas.',
+      );
     }
 
     // Check deadline
@@ -84,8 +100,8 @@ export class ElearningService {
     const existing = await this.prisma.submission.findFirst({
       where: {
         studentId: user.id,
-        assignmentId: data.assignmentId
-      }
+        assignmentId: data.assignmentId,
+      },
     });
 
     if (existing) {
@@ -95,7 +111,7 @@ export class ElearningService {
           fileUrl: data.fileUrl,
           textContent: data.textContent,
           submittedAt: new Date(),
-        }
+        },
       });
     }
 
@@ -120,39 +136,59 @@ export class ElearningService {
         gradingMethod: data.gradingMethod,
         sessionId: data.sessionId,
         questions: {
-          create: data.questions.map(q => ({
+          create: data.questions.map((q) => ({
             text: q.text,
             type: q.type,
             options: q.options, // Prisma automatically handles JSON
             correctAnswer: q.correctAnswer,
-            points: q.points
-          }))
-        }
+            points: q.points,
+          })),
+        },
       },
-      include: { questions: true }
+      include: { questions: true },
     });
   }
 
   // 6. Submit Quiz (Calculate Score) - NEW FEATURE
-  async submitQuiz(data: any, user: User) {
-    // 1. Validation
+  async submitQuiz(data: SubmitQuizDto, user: User) {
+    // Validation
     if (user.role !== Role.MAHASISWA) {
-      throw new ForbiddenException('Hanya mahasiswa yang dapat mengerjakan kuis.');
+      throw new ForbiddenException(
+        'Hanya mahasiswa yang dapat mengerjakan kuis.',
+      );
     }
 
-    // 2. Get Quiz Data
+    // Get Quiz Data
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: data.quizId },
-      include: { questions: true }
+      include: { questions: true },
     });
 
     if (!quiz) throw new NotFoundException('Kuis tidak ditemukan');
 
-    // 3. Calculate Score
+    // Time validation
+    const now = new Date();
+    if (now < quiz.startTime) {
+      throw new BadRequestException('Kuis belum dimulai');
+    }
+    if (now > quiz.endTime) {
+      throw new BadRequestException('Waktu pengerjaan kuis sudah habis');
+    }
+    
+
+    // Opsional: Cek apakah user sudah pernah submit (jika 1x attempt only)
+    const existingAttempt = await this.prisma.quizAttempt.findFirst({
+      where: { studentId: user.id, quizId: data.quizId },
+    });
+    if (existingAttempt) {
+      throw new BadRequestException('Anda sudah mengerjakan kuis ini');
+    }
+
+    // Calculate Score
     let score = 0;
     if (data.answers && Array.isArray(data.answers)) {
       for (const answer of data.answers) {
-        const question = quiz.questions.find(q => q.id === answer.questionId);
+        const question = quiz.questions.find((q) => q.id === answer.questionId);
         // If answer is correct (match key)
         if (question && question.correctAnswer === answer.answer) {
           score += question.points;
@@ -160,17 +196,17 @@ export class ElearningService {
       }
     }
 
-    // 4. Save Attempt
+    // Save Attempt
     return this.prisma.quizAttempt.create({
       data: {
         studentId: user.id,
         quizId: data.quizId,
         score: score,
-        finishedAt: new Date()
-      }
+        finishedAt: new Date(),
+      },
     });
   }
-  
+
   // 7. Get Course Content (For E-learning Page)
   async getCourseContent(kelasPerkuliahanId: number) {
     return this.prisma.session.findMany({
@@ -180,7 +216,7 @@ export class ElearningService {
         materials: true,
         assignments: true,
         quizzes: true,
-      }
+      },
     });
   }
 
@@ -197,8 +233,8 @@ export class ElearningService {
             sks: true,
             semester: true,
             jenisMK: true,
-            deskripsi: true
-          }
+            deskripsi: true,
+          },
         },
         dosen: {
           select: {
@@ -206,8 +242,8 @@ export class ElearningService {
             name: true,
             nip: true,
             email: true,
-            photo: true
-          }
+            photo: true,
+          },
         },
         sessions: {
           orderBy: { weekNumber: 'asc' },
@@ -216,25 +252,25 @@ export class ElearningService {
             assignments: {
               include: {
                 _count: {
-                  select: { submissions: true }
-                }
-              }
+                  select: { submissions: true },
+                },
+              },
             },
             quizzes: {
               include: {
                 _count: {
-                  select: { attempts: true }
-                }
-              }
-            }
-          }
+                  select: { attempts: true },
+                },
+              },
+            },
+          },
         },
         _count: {
           select: {
-            krs: true
-          }
-        }
-      }
+            krs: true,
+          },
+        },
+      },
     });
 
     if (!kelas) {
@@ -250,21 +286,21 @@ export class ElearningService {
     const krs = await this.prisma.kRS.findMany({
       where: {
         mahasiswaId: studentId,
-        status: 'DISETUJUI'
+        status: 'DISETUJUI',
       },
       include: {
-        kelasPerkuliahan: true
-      }
+        kelasPerkuliahan: true,
+      },
     });
 
     // Flatten all classes from all approved KRS
-    const allClasses = krs.flatMap(k => k.kelasPerkuliahan);
-    const kelasIds = allClasses.map(kelas => kelas.id);
+    const allClasses = krs.flatMap((k) => k.kelasPerkuliahan);
+    const kelasIds = allClasses.map((kelas) => kelas.id);
 
     // Return unique classes with details
     return this.prisma.kelasPerkuliahan.findMany({
       where: {
-        id: { in: kelasIds }
+        id: { in: kelasIds },
       },
       include: {
         mataKuliah: true,
@@ -273,10 +309,10 @@ export class ElearningService {
             id: true,
             name: true,
             nip: true,
-            photo: true
-          }
-        }
-      }
+            photo: true,
+          },
+        },
+      },
     });
   }
 
@@ -294,14 +330,14 @@ export class ElearningService {
                   select: {
                     id: true,
                     name: true,
-                    nip: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    nip: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!assignment) {
@@ -312,13 +348,13 @@ export class ElearningService {
     const submission = await this.prisma.submission.findFirst({
       where: {
         assignmentId,
-        studentId
-      }
+        studentId,
+      },
     });
 
     return {
       ...assignment,
-      submission
+      submission,
     };
   }
 
@@ -327,10 +363,19 @@ export class ElearningService {
     const quiz = await this.prisma.quiz.findUnique({
       where: { id: quizId },
       include: {
-        questions: true,
+        questions: {
+          select: {
+            id: true,
+            text: true,
+            type: true,
+            options: true,
+            points: true,
+            // correctAnswer: false
+          },
+        },
         attempts: {
           where: { studentId },
-          orderBy: { startedAt: 'desc' }
+          orderBy: { finishedAt: 'desc' },
         },
         session: {
           include: {
@@ -341,14 +386,14 @@ export class ElearningService {
                   select: {
                     id: true,
                     name: true,
-                    nip: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    nip: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!quiz) {
@@ -373,14 +418,14 @@ export class ElearningService {
                     id: true,
                     name: true,
                     nip: true,
-                    photo: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    photo: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!material) {
