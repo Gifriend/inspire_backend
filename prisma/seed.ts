@@ -160,20 +160,20 @@ async function main() {
     where: { kode: 'ALPRO-2023-GANJIL' }, update: {},
     create: {
       nama: 'Algoritma Pemrograman A', kode: 'ALPRO-2023-GANJIL', kapasitas: 40,
-      semester: '2023/2024 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
+      academicYear: '2023/2024 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
     }
   });
 
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswa.id, semester: '2023/2024 Ganjil', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswa.id, academicYear: '2023/2024 Ganjil', status: StatusKRS.DISETUJUI,
       totalSKS: 3, kelasPerkuliahan: { connect: [{ id: kelasAlproSem1.id }] }
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswa.id, mataKuliahId: mkAlpro.id, semester: '2023/2024 Ganjil',
+      mahasiswaId: mahasiswa.id, mataKuliahId: mkAlpro.id, academicYear: '2023/2024 Ganjil',
       nilaiHuruf: 'D', indeksNilai: 1.0, nilaiAkhir: 45, status: StatusNilai.SUDAH_ADA
     }
   });
@@ -183,7 +183,7 @@ async function main() {
     where: { kode: 'ALPRO-2024-GANJIL' }, update: {},
     create: {
       nama: 'Algoritma Pemrograman (Mengulang)', kode: 'ALPRO-2024-GANJIL', kapasitas: 40,
-      semester: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
+      academicYear: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
     }
   });
 
@@ -191,27 +191,27 @@ async function main() {
     where: { kode: 'WEB-2024-GANJIL' }, update: {},
     create: {
       nama: 'Pemrograman Web A', kode: 'WEB-2024-GANJIL', kapasitas: 40,
-      semester: '2024/2025 Ganjil', mataKuliahId: mkWeb.id, dosenId: dosen.id
+      academicYear: '2024/2025 Ganjil', mataKuliahId: mkWeb.id, dosenId: dosen.id
     }
   });
 
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswa.id, semester: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswa.id, academicYear: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
       totalSKS: 6, kelasPerkuliahan: { connect: [{ id: kelasAlproSem3.id }, { id: kelasWebSem3.id }] }
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswa.id, mataKuliahId: mkAlpro.id, semester: '2024/2025 Ganjil',
+      mahasiswaId: mahasiswa.id, mataKuliahId: mkAlpro.id, academicYear: '2024/2025 Ganjil',
       nilaiHuruf: 'A', indeksNilai: 4.0, nilaiAkhir: 86, status: StatusNilai.SUDAH_ADA
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswa.id, mataKuliahId: mkWeb.id, semester: '2024/2025 Ganjil',
+      mahasiswaId: mahasiswa.id, mataKuliahId: mkWeb.id, academicYear: '2024/2025 Ganjil',
       nilaiHuruf: 'B', indeksNilai: 3.0, nilaiAkhir: 75, status: StatusNilai.SUDAH_ADA
     }
   });
@@ -239,7 +239,7 @@ async function main() {
     where: { kode: 'SD-2023-GENAP' }, update: {},
     create: {
       nama: 'Struktur Data A', kode: 'SD-2023-GENAP', kapasitas: 40,
-      semester: '2023/2024 Genap', mataKuliahId: mkStrukturData.id, dosenId: dosen.id
+      academicYear: '2023/2024 Genap', mataKuliahId: mkStrukturData.id, dosenId: dosen.id
     }
   });
 
@@ -247,20 +247,20 @@ async function main() {
     where: { kode: 'MATDIS-2023-GENAP' }, update: {},
     create: {
       nama: 'Matematika Diskrit A', kode: 'MATDIS-2023-GENAP', kapasitas: 40,
-      semester: '2023/2024 Genap', mataKuliahId: mkMatdis.id, dosenId: dosen2.id
+      academicYear: '2023/2024 Genap', mataKuliahId: mkMatdis.id, dosenId: dosen2.id
     }
   });
 
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswa.id, semester: '2023/2024 Genap', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswa.id, academicYear: '2023/2024 Genap', status: StatusKRS.DISETUJUI,
       totalSKS: 6, kelasPerkuliahan: { connect: [{ id: kelasStrukturDataSem2.id }, { id: kelasMatdisSem2.id }] }
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswa.id, mataKuliahId: mkStrukturData.id, semester: '2023/2024 Genap',
+      mahasiswaId: mahasiswa.id, mataKuliahId: mkStrukturData.id, academicYear: '2023/2024 Genap',
       nilaiTugas: 85, nilaiUTS: 80, nilaiUAS: 88, nilaiAkhir: 84,
       nilaiHuruf: 'A', indeksNilai: 4.0, status: StatusNilai.SUDAH_ADA
     }
@@ -268,7 +268,7 @@ async function main() {
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswa.id, mataKuliahId: mkMatdis.id, semester: '2023/2024 Genap',
+      mahasiswaId: mahasiswa.id, mataKuliahId: mkMatdis.id, academicYear: '2023/2024 Genap',
       nilaiTugas: 78, nilaiUTS: 75, nilaiUAS: 80, nilaiAkhir: 78,
       nilaiHuruf: 'B+', indeksNilai: 3.5, status: StatusNilai.SUDAH_ADA
     }
@@ -280,7 +280,7 @@ async function main() {
     where: { kode: 'ALPRO-DEDI-2024-GANJIL' }, update: {},
     create: {
       nama: 'Algoritma Pemrograman B', kode: 'ALPRO-DEDI-2024-GANJIL', kapasitas: 40,
-      semester: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen2.id
+      academicYear: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen2.id
     }
   });
 
@@ -288,20 +288,20 @@ async function main() {
     where: { kode: 'WEB-DEDI-2024-GANJIL' }, update: {},
     create: {
       nama: 'Pemrograman Web B', kode: 'WEB-DEDI-2024-GANJIL', kapasitas: 40,
-      semester: '2024/2025 Ganjil', mataKuliahId: mkWeb.id, dosenId: dosen2.id
+      academicYear: '2024/2025 Ganjil', mataKuliahId: mkWeb.id, dosenId: dosen2.id
     }
   });
 
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswaAktif.id, semester: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswaAktif.id, academicYear: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
       totalSKS: 6, kelasPerkuliahan: { connect: [{ id: kelasAlproGanjilDedi.id }, { id: kelasWebGanjilDedi.id }] }
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswaAktif.id, mataKuliahId: mkAlpro.id, semester: '2024/2025 Ganjil',
+      mahasiswaId: mahasiswaAktif.id, mataKuliahId: mkAlpro.id, academicYear: '2024/2025 Ganjil',
       nilaiTugas: 88, nilaiUTS: 85, nilaiUAS: 90, nilaiAkhir: 88,
       nilaiHuruf: 'A', indeksNilai: 4.0, status: StatusNilai.SUDAH_ADA
     }
@@ -309,7 +309,7 @@ async function main() {
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswaAktif.id, mataKuliahId: mkWeb.id, semester: '2024/2025 Ganjil',
+      mahasiswaId: mahasiswaAktif.id, mataKuliahId: mkWeb.id, academicYear: '2024/2025 Ganjil',
       nilaiTugas: 82, nilaiUTS: 80, nilaiUAS: 85, nilaiAkhir: 82,
       nilaiHuruf: 'A-', indeksNilai: 3.7, status: StatusNilai.SUDAH_ADA
     }
@@ -320,20 +320,20 @@ async function main() {
     where: { kode: 'ALPRO-CITRA-2024-GANJIL' }, update: {},
     create: {
       nama: 'Algoritma Pemrograman C', kode: 'ALPRO-CITRA-2024-GANJIL', kapasitas: 40,
-      semester: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
+      academicYear: '2024/2025 Ganjil', mataKuliahId: mkAlpro.id, dosenId: dosen.id
     }
   });
 
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswaDiajukan.id, semester: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswaDiajukan.id, academicYear: '2024/2025 Ganjil', status: StatusKRS.DISETUJUI,
       totalSKS: 3, kelasPerkuliahan: { connect: [{ id: kelasAlproGanjilCitra.id }] }
     }
   });
 
   await prisma.nilai.create({
     data: {
-      mahasiswaId: mahasiswaDiajukan.id, mataKuliahId: mkAlpro.id, semester: '2024/2025 Ganjil',
+      mahasiswaId: mahasiswaDiajukan.id, mataKuliahId: mkAlpro.id, academicYear: '2024/2025 Ganjil',
       nilaiTugas: 75, nilaiUTS: 72, nilaiUAS: 78, nilaiAkhir: 75,
       nilaiHuruf: 'B', indeksNilai: 3.0, status: StatusNilai.SUDAH_ADA
     }
@@ -345,7 +345,7 @@ async function main() {
     where: { kode: 'WEB-2024-GENAP' }, update: {},
     create: {
       nama: 'Pemrograman Web A', kode: 'WEB-2024-GENAP', kapasitas: 40,
-      semester: '2024/2025 Genap', mataKuliahId: mkWeb.id, dosenId: dosen.id
+      academicYear: '2024/2025 Genap', mataKuliahId: mkWeb.id, dosenId: dosen.id
     }
   });
 
@@ -353,7 +353,7 @@ async function main() {
     where: { kode: 'BD-2024-GENAP' }, update: {},
     create: {
       nama: 'Basis Data A', kode: 'BD-2024-GENAP', kapasitas: 40,
-      semester: '2024/2025 Genap', mataKuliahId: mkBasisData.id, dosenId: dosen2.id
+      academicYear: '2024/2025 Genap', mataKuliahId: mkBasisData.id, dosenId: dosen2.id
     }
   });
 
@@ -361,7 +361,7 @@ async function main() {
     where: { kode: 'PBO-2024-GENAP' }, update: {},
     create: {
       nama: 'Pemrograman Berorientasi Objek A', kode: 'PBO-2024-GENAP', kapasitas: 35,
-      semester: '2024/2025 Genap', mataKuliahId: mkPBO.id, dosenId: dosen.id
+      academicYear: '2024/2025 Genap', mataKuliahId: mkPBO.id, dosenId: dosen.id
     }
   });
 
@@ -369,7 +369,7 @@ async function main() {
     where: { kode: 'JARKOM-2024-GENAP' }, update: {},
     create: {
       nama: 'Jaringan Komputer A', kode: 'JARKOM-2024-GENAP', kapasitas: 30,
-      semester: '2024/2025 Genap', mataKuliahId: mkJarkom.id, dosenId: dosen2.id
+      academicYear: '2024/2025 Genap', mataKuliahId: mkJarkom.id, dosenId: dosen2.id
     }
   });
 
@@ -377,14 +377,14 @@ async function main() {
     where: { kode: 'MOBILE-2024-GENAP' }, update: {},
     create: {
       nama: 'Pemrograman Mobile A', kode: 'MOBILE-2024-GENAP', kapasitas: 30,
-      semester: '2024/2025 Genap', mataKuliahId: mkMobile.id, dosenId: dosen.id
+      academicYear: '2024/2025 Genap', mataKuliahId: mkMobile.id, dosenId: dosen.id
     }
   });
 
   // A. Budi (Mhs Baru) - KRS Draft
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswaDraft.id, semester: '2024/2025 Genap', status: StatusKRS.DRAFT,
+      mahasiswaId: mahasiswaDraft.id, academicYear: '2024/2025 Genap', status: StatusKRS.DRAFT,
       totalSKS: 3, kelasPerkuliahan: { connect: [{ id: kelasWebGenap.id }] }
     }
   });
@@ -392,7 +392,7 @@ async function main() {
   // B. Citra - KRS Diajukan (Menunggu Persetujuan Koorprodi)
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswaDiajukan.id, semester: '2024/2025 Genap', status: StatusKRS.DIAJUKAN,
+      mahasiswaId: mahasiswaDiajukan.id, academicYear: '2024/2025 Genap', status: StatusKRS.DIAJUKAN,
       totalSKS: 9, kelasPerkuliahan: { connect: [
         { id: kelasWebGenap.id },
         { id: kelasBDGenap.id },
@@ -404,7 +404,7 @@ async function main() {
   // C. Dedi - KRS Disetujui (Sudah Bisa Mengakses E-Learning)
   await prisma.kRS.create({
     data: {
-      mahasiswaId: mahasiswaAktif.id, semester: '2024/2025 Genap', status: StatusKRS.DISETUJUI,
+      mahasiswaId: mahasiswaAktif.id, academicYear: '2024/2025 Genap', status: StatusKRS.DISETUJUI,
       totalSKS: 9, kelasPerkuliahan: { connect: [
         { id: kelasBDGenap.id },
         { id: kelasPBOGenap.id },

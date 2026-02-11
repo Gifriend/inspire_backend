@@ -13,7 +13,7 @@ export class AcademicService {
     const rawNilai = await this.prisma.nilai.findMany({
       where: {
         mahasiswaId: studentId,
-        semester: semester,
+        academicYear: semester,
         status: 'SUDAH_ADA'
       },
       include: {
@@ -154,7 +154,7 @@ export class AcademicService {
     const allNilai = await this.prisma.nilai.findMany({
       where: { mahasiswaId: mahasiswaId, status: 'SUDAH_ADA' },
       include: { mataKuliah: true },
-      orderBy: { semester: 'asc' },
+      orderBy: { academicYear: 'asc' },
     });
 
     const bestGradesMap = new Map<string, any>();
@@ -176,7 +176,7 @@ export class AcademicService {
           sks: record.mataKuliah.sks,
           nilaiHuruf: record.nilaiHuruf,
           indeksNilai: record.indeksNilai, // CHANGED FROM 'indeks' TO 'indeksNilai' FOR CONSISTENCY
-          semester: record.semester,
+          academicYear: record.academicYear,
         });
       }
     }

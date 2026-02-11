@@ -14,14 +14,14 @@ export class KrsService {
   constructor(private prisma: PrismaService) {}
 
   // Helper: Get active KRS or create new one (DRAFT)
-  async getOrCreateKrs(mahasiswaId: number, semester: string) {
+  async getOrCreateKrs(mahasiswaId: number, academicYear: string) {
     // Check if KRS already exists
     let krs = await this.prisma.kRS.findUnique({
       where: {
-        mahasiswaId_semester: {
+        mahasiswaId_academicYear: {
           // Composite key from Prisma schema
           mahasiswaId,
-          semester,
+          academicYear,
         },
       },
       include: {
@@ -36,7 +36,7 @@ export class KrsService {
       krs = await this.prisma.kRS.create({
         data: {
           mahasiswaId,
-          semester,
+          academicYear,
           status: StatusKRS.DRAFT,
           totalSKS: 0,
         },
@@ -170,5 +170,48 @@ export class KrsService {
         tanggalPersetujuan: null,
       },
     });
+  }
+
+  async getAvailableCourses(
+    mahasiswaId: number,
+    semesterNumbers: number[],
+    year: string,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: mahasiswaId },
+    });
+    if (!user || user.role !== 'MAHASISWA') {
+      throw new ForbiddenException(
+        'Hanya mahasiswa yang bisa akses mata kuliah tersedia',
+      );
+    }
+
+    const availableCourses = await this.prisma.kelasPerkuliahan.findMany({
+      where: {
+        mataKuliah: {
+          semester: { in: semesterNumbers },
+          // prodiId: user.prodiId, // Filter berdasarkan prodi mahasiswa
+        },
+        academicYear: year,
+      },
+      include: {
+        mataKuliah: true,
+        dosen: true,
+      },
+    });
+
+    const currentKrs = await this.prisma.kRS.findMany({
+      where: { mahasiswaId, academicYear: { startsWith: year } },
+      include: { kelasPerkuliahan: true },
+    });
+    const takenCourseIds = currentKrs.flatMap((krs) =>
+      krs.kelasPerkuliahan.map((k) => k.id),
+    );
+
+    const filteredCourses = availableCourses.filter(
+      (course) => !takenCourseIds.includes(course.id),
+    );
+
+    return filteredCourses;
   }
 }
