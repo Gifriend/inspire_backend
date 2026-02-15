@@ -105,11 +105,15 @@ model User {
   password     String
   photo        String?
   status       Status
-  alamat       String?
+  alamat       String? 
   telepon      String?
   tanggalLahir DateTime?
   fakultasId   Int
   prodiId      Int?
+  // Akademik Fields (untuk mahasiswa)
+  ipk          Float?    @default(0.0) // IPK Kumulatif
+  totalSksLulus Int?     @default(0)   // Total SKS yang sudah lulus
+  semesterTerakhir String? // Semester terakhir aktif (opsional)
 
   fakultas Fakultas @relation(fields: [fakultasId], references: [id])
   prodi    Prodi?   @relation(fields: [prodiId], references: [id])
