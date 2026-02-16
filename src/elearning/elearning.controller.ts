@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Req,
@@ -19,6 +20,7 @@ import {
   SubmitQuizDto,
 } from './dto/elearning.dto';
 import { JwtAuthGuard } from '../auth/strategy/jwt-auth.guard';
+import { GradeSubmissionDto } from './dto/grade.submisssion.dto';
 
 @Controller('elearning')
 export class ElearningController {
@@ -111,4 +113,40 @@ export class ElearningController {
   async getMaterialDetail(@Param('id') id: string) {
     return this.elearningService.getMaterialDetail(id);
   }
+
+  // elearning.controller.ts
+@UseGuards(JwtAuthGuard)
+@Get('assignment/:id/submissions')
+async getAssignmentSubmissions(@Param('id') assignmentId: string, @Req() req) {
+  return this.elearningService.getAssignmentSubmissions(assignmentId, req.user.id);
+}
+
+@UseGuards(JwtAuthGuard)
+@Patch('submission/:id/grade')
+async gradeSubmission(
+  @Param('id') submissionId: string,
+  @Body() dto: GradeSubmissionDto,
+  @Req() req,
+) {
+  return this.elearningService.gradeSubmission(submissionId, dto, req.user.id);
+}
+
+@UseGuards(JwtAuthGuard)
+@Get('quiz/:id/attempts')
+async getQuizAttempts(@Param('id') quizId: string, @Req() req) {
+  return this.elearningService.getQuizAttempts(quizId, req.user.id);
+}
+
+// OPTIONAL (helper)
+@UseGuards(JwtAuthGuard)
+@Get('submission/:id')
+async getSubmissionDetail(@Param('id') submissionId: string) {
+  return this.elearningService.getSubmissionDetail(submissionId);
+}
+
+@UseGuards(JwtAuthGuard)
+@Get('lecturer/courses')
+async getLecturerCourses(@Req() req) {
+  return this.elearningService.getLecturerCourses(req.user.id);
+}
 }

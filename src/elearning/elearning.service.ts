@@ -174,7 +174,6 @@ export class ElearningService {
     if (now > quiz.endTime) {
       throw new BadRequestException('Waktu pengerjaan kuis sudah habis');
     }
-    
 
     // Opsional: Cek apakah user sudah pernah submit (jika 1x attempt only)
     const existingAttempt = await this.prisma.quizAttempt.findFirst({
@@ -433,5 +432,119 @@ export class ElearningService {
     }
 
     return material;
+  }
+
+  // elearning.service.ts
+  async getAssignmentSubmissions(assignmentId: string, userId: number) {
+    const assignment = await this.prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: {
+        session: {
+          include: { kelasPerkuliahan: { include: { dosen: true } } },
+        },
+      },
+    });
+    if (!assignment) throw new NotFoundException('Assignment tidak ditemukan');
+    if (assignment.session.kelasPerkuliahan.dosen.id !== userId) {
+      throw new ForbiddenException(
+        'Hanya dosen pengajar yang dapat melihat submission',
+      );
+    }
+
+    const submissions = await this.prisma.submission.findMany({
+      where: { assignmentId },
+      include: {
+        student: {
+          select: { id: true, nim: true, name: true, email: true, photo: true },
+        },
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    return submissions;
+  }
+
+  async gradeSubmission(
+    submissionId: string,
+    dto: { grade: string | number; feedback?: string },
+    userId: number,
+  ) {
+    const submission = await this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        assignment: {
+          include: {
+            session: {
+              include: { kelasPerkuliahan: { include: { dosen: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!submission) throw new NotFoundException('Submission tidak ditemukan');
+    if (submission.assignment.session.kelasPerkuliahan.dosen.id !== userId) {
+      throw new ForbiddenException(
+        'Hanya dosen pengajar yang dapat memberi nilai',
+      );
+    }
+
+    const gradeValue =
+      typeof dto.grade === 'number' ? dto.grade : parseFloat(dto.grade);
+
+    return this.prisma.submission.update({
+      where: { id: submissionId },
+      data: { grade: gradeValue, feedback: dto.feedback ?? null },
+    });
+  }
+
+  async getQuizAttempts(quizId: string, userId: number) {
+    const quiz = await this.prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        session: {
+          include: { kelasPerkuliahan: { include: { dosen: true } } },
+        },
+      },
+    });
+    if (!quiz) throw new NotFoundException('Quiz tidak ditemukan');
+    if (quiz.session.kelasPerkuliahan.dosen.id !== userId) {
+      throw new ForbiddenException(
+        'Hanya dosen pengajar yang dapat melihat hasil quiz',
+      );
+    }
+
+    return this.prisma.quizAttempt.findMany({
+      where: { quizId },
+      include: {
+        student: {
+          select: { id: true, nim: true, name: true, email: true, photo: true },
+        },
+      },
+      orderBy: { finishedAt: 'desc' },
+    });
+  }
+
+  // OPTIONAL
+  async getSubmissionDetail(submissionId: string) {
+    return this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: {
+        student: {
+          select: { id: true, nim: true, name: true, email: true, photo: true },
+        },
+        assignment: true,
+      },
+    });
+  }
+
+  async getLecturerCourses(userId: number) {
+    return this.prisma.kelasPerkuliahan.findMany({
+      where: { dosenId: userId },
+      include: {
+        mataKuliah: true,
+        _count: { select: { krs: true, sessions: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 }
