@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePresensiDto, SubmitPresensiDto, ManualPresensiDto } from './dto/presensi.dto';
-import { User, SessionType, Role } from '@prisma/client';
+import { User, SessionType, Role, AttendanceStatus, StatusKRS } from '@prisma/client';
 
 @Injectable()
 export class PresensiService {
@@ -93,7 +93,12 @@ export class PresensiService {
       }
     }
 
-    return this.recordAttendance(session.id, mahasiswa.id, 'TOKEN');
+    return this.recordAttendance(
+      session.id,
+      mahasiswa.id,
+      'TOKEN',
+      AttendanceStatus.HADIR,
+    );
   }
 
   // ============================================
@@ -123,9 +128,91 @@ export class PresensiService {
       where: {
         sessionId_mahasiswaId: { sessionId: dto.sessionId, mahasiswaId: dto.mahasiswaId }
       },
-      update: { method: 'MANUAL', createdAt: new Date() },
-      create: { sessionId: dto.sessionId, mahasiswaId: dto.mahasiswaId, method: 'MANUAL' }
+      update: { method: 'MANUAL', status: dto.status, createdAt: new Date() },
+      create: {
+        sessionId: dto.sessionId,
+        mahasiswaId: dto.mahasiswaId,
+        method: 'MANUAL',
+        status: dto.status,
+      }
     });
+  }
+
+  // ============================================
+  // 4. LIST PERTEMUAN PER KELAS (LECTURER)
+  // ============================================
+  async getSessionsByClass(kelasId: number, user: User) {
+    if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
+
+    const kelas = await this.prisma.kelasPerkuliahan.findUnique({
+      where: { id: kelasId },
+    });
+    if (!kelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    if (user.role === Role.DOSEN && kelas.dosenId !== user.id) {
+      throw new ForbiddenException('Bukan kelas Anda.');
+    }
+
+    return this.prisma.presensiSession.findMany({
+      where: { kelasPerkuliahanId: kelasId, type: SessionType.KELAS },
+      orderBy: { date: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        date: true,
+        isOpen: true,
+        token: true,
+        type: true,
+      },
+    });
+  }
+
+  // ============================================
+  // 5. LIST MAHASISWA PER KELAS (+STATUS PER SESI)
+  // ============================================
+  async getClassStudents(kelasId: number, user: User, sessionId?: number) {
+    if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
+
+    const kelas = await this.prisma.kelasPerkuliahan.findUnique({
+      where: { id: kelasId },
+    });
+    if (!kelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    if (user.role === Role.DOSEN && kelas.dosenId !== user.id) {
+      throw new ForbiddenException('Bukan kelas Anda.');
+    }
+
+    const krsList = await this.prisma.kRS.findMany({
+      where: {
+        status: StatusKRS.DISETUJUI,
+        kelasPerkuliahan: { some: { id: kelasId } },
+      },
+      include: {
+        mahasiswa: {
+          select: { id: true, name: true, nim: true, email: true },
+        },
+      },
+    });
+
+    const mahasiswaList = krsList.map((krs) => krs.mahasiswa);
+
+    if (!sessionId) {
+      return mahasiswaList;
+    }
+
+    const records = await this.prisma.presensiRecord.findMany({
+      where: { sessionId, mahasiswaId: { in: mahasiswaList.map((m) => m.id) } },
+      select: { mahasiswaId: true, status: true, method: true, createdAt: true },
+    });
+
+    const recordMap = new Map(
+      records.map((record) => [record.mahasiswaId, record]),
+    );
+
+    return mahasiswaList.map((mhs) => ({
+      ...mhs,
+      presensi: recordMap.get(mhs.id) || null,
+    }));
   }
 
   // --- Helpers ---
@@ -140,14 +227,19 @@ export class PresensiService {
     return result;
   }
 
-  private async recordAttendance(sessionId: number, mahasiswaId: number, method: string) {
+  private async recordAttendance(
+    sessionId: number,
+    mahasiswaId: number,
+    method: string,
+    status: AttendanceStatus,
+  ) {
     const existing = await this.prisma.presensiRecord.findUnique({
       where: { sessionId_mahasiswaId: { sessionId, mahasiswaId } },
     });
     if (existing) throw new BadRequestException('Sudah presensi.');
 
     return this.prisma.presensiRecord.create({
-      data: { sessionId, mahasiswaId, method },
+      data: { sessionId, mahasiswaId, method, status },
     });
   }
 

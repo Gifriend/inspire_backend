@@ -13,15 +13,63 @@ import { SubmitKrsDto } from './dto/submit-krs.dto';
 export class KrsService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeAcademicYear(input?: string) {
+    const trimmed = (input || '').trim();
+    const currentYear = new Date().getFullYear();
+
+    if (!trimmed) {
+      return {
+        canonical: `${currentYear - 1}/${currentYear} Genap`,
+        semesterType: 'GENAP' as const,
+      };
+    }
+
+    const dbFormatMatch = trimmed.match(
+      /^(\d{4})\/(\d{4})\s+(Genap|Ganjil)$/i,
+    );
+    if (dbFormatMatch) {
+      const semesterType =
+        dbFormatMatch[3].toUpperCase() === 'GENAP' ? 'GENAP' : 'GANJIL';
+      const rightYear = parseInt(dbFormatMatch[2], 10);
+      const semesterDisplay = semesterType === 'GENAP' ? 'Genap' : 'Ganjil';
+
+      return {
+        canonical: `${rightYear - 1}/${rightYear} ${semesterDisplay}`,
+        semesterType,
+      };
+    }
+
+    const shortMatch = trimmed.match(/^(GENAP|GANJIL)(?:-(\d{4}))?$/i);
+    if (shortMatch) {
+      const semesterType = shortMatch[1].toUpperCase() as 'GENAP' | 'GANJIL';
+      const rightYear = shortMatch[2]
+        ? parseInt(shortMatch[2], 10)
+        : currentYear;
+      const semesterDisplay = semesterType === 'GENAP' ? 'Genap' : 'Ganjil';
+
+      return {
+        canonical: `${rightYear - 1}/${rightYear} ${semesterDisplay}`,
+        semesterType,
+      };
+    }
+
+    throw new BadRequestException(
+      'Format academicYear tidak valid. Gunakan GENAP-2026, GANJIL-2026, GENAP, GANJIL, atau 2025/2026 Genap.',
+    );
+  }
+
   // Helper: Get active KRS or create new one (DRAFT)
   async getOrCreateKrs(mahasiswaId: number, academicYear: string) {
+    const normalizedAcademicYear =
+      this.normalizeAcademicYear(academicYear).canonical;
+
     // Check if KRS already exists
     let krs = await this.prisma.kRS.findUnique({
       where: {
         mahasiswaId_academicYear: {
           // Composite key from Prisma schema
           mahasiswaId,
-          academicYear,
+          academicYear: normalizedAcademicYear,
         },
       },
       include: {
@@ -36,7 +84,7 @@ export class KrsService {
       krs = await this.prisma.kRS.create({
         data: {
           mahasiswaId,
-          academicYear,
+          academicYear: normalizedAcademicYear,
           status: StatusKRS.DRAFT,
           totalSKS: 0,
         },
@@ -172,11 +220,7 @@ export class KrsService {
     });
   }
 
-  async getAvailableCourses(
-    mahasiswaId: number,
-    semesterNumbers: number[],
-    year: string,
-  ) {
+  async getAvailableCourses(mahasiswaId: number, academicYearInput?: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: mahasiswaId },
     });
@@ -186,13 +230,22 @@ export class KrsService {
       );
     }
 
-    const availableCourses = await this.prisma.kelasPerkuliahan.findMany({
+    const normalized = this.normalizeAcademicYear(academicYearInput);
+    const normalizedAcademicYear = normalized.canonical;
+    const semesterType = normalized.semesterType;
+    const semesterNumbers =
+      semesterType === 'GENAP' ? [2, 4, 6, 8] : [1, 3, 5, 7];
+    const semesterDisplay = semesterType === 'GENAP' ? 'Genap' : 'Ganjil';
+
+    let activeAcademicYear = normalizedAcademicYear;
+
+    let availableCourses = await this.prisma.kelasPerkuliahan.findMany({
       where: {
         mataKuliah: {
           semester: { in: semesterNumbers },
           // prodiId: user.prodiId, // Filter berdasarkan prodi mahasiswa
         },
-        academicYear: year,
+        academicYear: activeAcademicYear,
       },
       include: {
         mataKuliah: true,
@@ -200,8 +253,37 @@ export class KrsService {
       },
     });
 
+    if (availableCourses.length === 0) {
+      const fallbackAcademicYear = await this.prisma.kelasPerkuliahan.findFirst({
+        where: {
+          academicYear: { endsWith: ` ${semesterDisplay}` },
+          mataKuliah: {
+            semester: { in: semesterNumbers },
+          },
+        },
+        orderBy: { academicYear: 'desc' },
+        select: { academicYear: true },
+      });
+
+      if (fallbackAcademicYear) {
+        activeAcademicYear = fallbackAcademicYear.academicYear;
+        availableCourses = await this.prisma.kelasPerkuliahan.findMany({
+          where: {
+            mataKuliah: {
+              semester: { in: semesterNumbers },
+            },
+            academicYear: activeAcademicYear,
+          },
+          include: {
+            mataKuliah: true,
+            dosen: true,
+          },
+        });
+      }
+    }
+
     const currentKrs = await this.prisma.kRS.findMany({
-      where: { mahasiswaId, academicYear: { startsWith: year } },
+      where: { mahasiswaId, academicYear: activeAcademicYear },
       include: { kelasPerkuliahan: true },
     });
     const takenCourseIds = currentKrs.flatMap((krs) =>

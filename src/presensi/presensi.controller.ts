@@ -4,7 +4,8 @@ import {
   Body, 
   UseGuards, 
   ForbiddenException, 
-  Get, Param, ParseIntPipe
+  BadRequestException,
+  Get, Param, ParseIntPipe, Query
 } from '@nestjs/common';
 import { User, Role } from '@prisma/client';
 import { PresensiService } from './presensi.service';
@@ -35,5 +36,28 @@ export class PresensiController {
   async manualPresensi(@Body() dto: ManualPresensiDto, @CurrentUser() user: User) {
     if (user.role === Role.MAHASISWA) throw new ForbiddenException('Mahasiswa tidak boleh akses ini.');
     return this.presensiService.manualPresensi(dto, user);
+  }
+
+  // 4. Dosen Lihat Daftar Pertemuan (Token per pertemuan)
+  @Get('kelas/:kelasId/sessions')
+  async getSessionsByClass(
+    @Param('kelasId', ParseIntPipe) kelasId: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.presensiService.getSessionsByClass(kelasId, user);
+  }
+
+  // 5. Dosen Lihat List Mahasiswa per Kelas (+opsional status per sesi)
+  @Get('kelas/:kelasId/mahasiswa')
+  async getClassStudents(
+    @Param('kelasId', ParseIntPipe) kelasId: number,
+    @Query('sessionId') sessionId: string | undefined,
+    @CurrentUser() user: User,
+  ) {
+    const parsedSessionId = sessionId ? parseInt(sessionId, 10) : undefined;
+    if (sessionId && Number.isNaN(parsedSessionId)) {
+      throw new BadRequestException('sessionId harus berupa angka.');
+    }
+    return this.presensiService.getClassStudents(kelasId, user, parsedSessionId);
   }
 }

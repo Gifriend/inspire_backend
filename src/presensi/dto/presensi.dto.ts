@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt, Length } from 'class-validator';
-import { SessionType } from '@prisma/client';
+import { SessionType, AttendanceStatus } from '@prisma/client';
 
 export class CreatePresensiDto {
   @IsNotEmpty()
@@ -34,4 +34,8 @@ export class ManualPresensiDto {
   @IsNotEmpty()
   @IsInt()
   mahasiswaId: number;
+
+  @IsNotEmpty()
+  @IsEnum(AttendanceStatus)
+  status: AttendanceStatus;
 }

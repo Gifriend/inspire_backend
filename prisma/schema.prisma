@@ -53,6 +53,13 @@ enum StatusNilai {
   SUDAH_ADA
 }
 
+enum AttendanceStatus {
+  HADIR
+  IZIN
+  SAKIT
+  ALPHA
+}
+
 enum SessionType {
   KELAS
   UAS
@@ -296,6 +303,7 @@ model PresensiRecord {
   // HAPUS: swafotoUrl
   // GANTI: method (Untuk tahu dia absen pakai TOKEN atau MANUAL oleh dosen)
   method String @default("TOKEN") // "TOKEN" atau "MANUAL"
+  status AttendanceStatus @default(HADIR)
 
   createdAt DateTime @default(now())
 

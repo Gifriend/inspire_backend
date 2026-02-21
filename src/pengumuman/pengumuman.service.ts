@@ -187,4 +187,52 @@ export class PengumumanService {
 
     return pengumuman;
   }
+
+  async findAllForDosen(dosenId: number) {
+    return this.prisma.pengumuman.findMany({
+      where: {
+        dosenId, // semua yang pernah dibuat dosen tsb
+      },
+      include: {
+        dosen: { select: { name: true, nip: true } },
+        kelas: { select: { id: true, nama: true, kode: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findAllForDosenByKelas(dosenId: number, kelasId: number) {
+    // validasi kelas harus milik dosen
+    const kelas = await this.prisma.kelasPerkuliahan.findFirst({
+      where: { id: kelasId, dosenId },
+      select: { id: true },
+    });
+
+    if (!kelas) {
+      throw new ForbiddenException('Kelas tidak ditemukan atau bukan milik Anda');
+    }
+
+    return this.prisma.pengumuman.findMany({
+      where: {
+        dosenId,
+        kelas: { some: { id: kelasId } },
+      },
+      include: {
+        dosen: { select: { name: true, nip: true } },
+        kelas: { select: { id: true, nama: true, kode: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findAllForKoorprodi() {
+    return this.prisma.pengumuman.findMany({
+      // "yang sudah pernah dibuat" = tanpa filter aktif
+      include: {
+        dosen: { select: { name: true, nip: true } },
+        kelas: { select: { id: true, nama: true, kode: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 }
