@@ -287,6 +287,9 @@ model PresensiSession {
   // NEW: Token unik 8 karakter untuk absen
   token String @unique
 
+  // NEW: Deadline untuk presensi dengan hari dan jam
+  deadlineAt DateTime?
+
   kelasPerkuliahanId Int?
   kelasPerkuliahan   KelasPerkuliahan? @relation(fields: [kelasPerkuliahanId], references: [id])
 

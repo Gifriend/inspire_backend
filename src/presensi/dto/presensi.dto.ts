@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt, Length } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt, Length, IsDateString } from 'class-validator';
 import { SessionType, AttendanceStatus } from '@prisma/client';
 
 export class CreatePresensiDto {
@@ -13,6 +13,15 @@ export class CreatePresensiDto {
   @IsOptional()
   @IsInt()
   kelasPerkuliahanId?: number;
+
+  // NEW: Deadline untuk presensi
+  @IsOptional()
+  @IsDateString()
+  deadlineDate?: string; // Format: YYYY-MM-DD
+
+  @IsOptional()
+  @IsString()
+  deadlineTime?: string; // Format: HH:mm (contoh: 14:30)
 }
 
 export class SubmitPresensiDto {

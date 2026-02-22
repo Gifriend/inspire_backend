@@ -46,6 +46,30 @@ export class PresensiService {
     // GENERATE TOKEN (8 UPPERCASE LETTERS & NUMBERS)
     const token = this.generateToken(8);
 
+    // Process Deadline (combine deadlineDate and deadlineTime)
+    let deadlineAt: Date | null = null;
+    if (dto.deadlineDate && dto.deadlineTime) {
+      try {
+        const [hours, minutes] = dto.deadlineTime.split(':').map(Number);
+        const deadline = new Date(dto.deadlineDate);
+        deadline.setHours(hours, minutes, 0, 0);
+        
+        // Validasi deadline harus di masa depan
+        if (deadline <= new Date()) {
+          throw new BadRequestException('Deadline harus di masa depan.');
+        }
+        
+        deadlineAt = deadline;
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new BadRequestException('Format deadline tidak valid. Gunakan YYYY-MM-DD untuk tanggal dan HH:mm untuk jam.');
+      }
+    } else if (dto.deadlineDate || dto.deadlineTime) {
+      throw new BadRequestException('Baik deadlineDate maupun deadlineTime harus diisi bersama atau keduanya kosong.');
+    }
+
     return this.prisma.presensiSession.create({
       data: {
         title: dto.title,
@@ -54,6 +78,7 @@ export class PresensiService {
         date: new Date(),
         isOpen: true,
         token: token, // Save token
+        deadlineAt: deadlineAt, // Save deadline
       },
     });
   }
@@ -67,6 +92,11 @@ export class PresensiService {
     });
     if (!session) throw new NotFoundException('Sesi tidak ditemukan');
     if (!session.isOpen) throw new BadRequestException('Sesi sudah ditutup.');
+
+    // VALIDATE DEADLINE
+    if (session.deadlineAt && new Date() > session.deadlineAt) {
+      throw new BadRequestException('Batas waktu presensi sudah terlewat.');
+    }
 
     // VALIDATE TOKEN
     if (session.token !== dto.token) {
@@ -213,6 +243,86 @@ export class PresensiService {
       ...mhs,
       presensi: recordMap.get(mhs.id) || null,
     }));
+  }
+
+  // ============================================
+  // 6. LIST PENGISI PRESENSI PER SESI
+  // ============================================
+  async getSessionAttendances(
+    sessionId: number,
+    user: User,
+    method?: 'TOKEN' | 'MANUAL',
+  ) {
+    if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
+
+    const session = await this.prisma.presensiSession.findUnique({
+      where: { id: sessionId },
+      include: { kelasPerkuliahan: true },
+    });
+
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan');
+
+    if (
+      user.role === Role.DOSEN &&
+      session.kelasPerkuliahanId &&
+      session.kelasPerkuliahan?.dosenId !== user.id
+    ) {
+      throw new ForbiddenException('Anda tidak berhak melihat presensi kelas ini.');
+    }
+
+    return this.prisma.presensiRecord.findMany({
+      where: {
+        sessionId,
+        ...(method ? { method } : {}),
+      },
+      include: {
+        mahasiswa: {
+          select: {
+            id: true,
+            name: true,
+            nim: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  // ============================================
+  // 7. BATALKAN KEHADIRAN MAHASISWA
+  // ============================================
+  async revokeAttendance(sessionId: number, mahasiswaId: number, user: User) {
+    if (user.role === Role.MAHASISWA) throw new ForbiddenException('Akses ditolak');
+
+    const session = await this.prisma.presensiSession.findUnique({
+      where: { id: sessionId },
+      include: { kelasPerkuliahan: true },
+    });
+
+    if (!session) throw new NotFoundException('Sesi tidak ditemukan');
+
+    if (
+      user.role === Role.DOSEN &&
+      session.kelasPerkuliahanId &&
+      session.kelasPerkuliahan?.dosenId !== user.id
+    ) {
+      throw new ForbiddenException('Anda tidak berhak membatalkan presensi kelas ini.');
+    }
+
+    const existing = await this.prisma.presensiRecord.findUnique({
+      where: { sessionId_mahasiswaId: { sessionId, mahasiswaId } },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Data presensi mahasiswa tidak ditemukan di sesi ini.');
+    }
+
+    await this.prisma.presensiRecord.delete({
+      where: { sessionId_mahasiswaId: { sessionId, mahasiswaId } },
+    });
+
+    return { message: 'Presensi mahasiswa berhasil dibatalkan.' };
   }
 
   // --- Helpers ---
