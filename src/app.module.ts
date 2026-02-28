@@ -8,6 +8,7 @@ import { LoggerMiddleware } from './common/middleware/middleware';
 import { PresensiModule } from './presensi/presensi.module';
 import { NotificationModule } from './notification/notifications.module';
 import { ScheduleModule } from './schedule/schedule.module';
+import { NilaiModule } from './nilai/nilai.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ScheduleModule } from './schedule/schedule.module';
     PresensiModule,
     NotificationModule,
     ScheduleModule,
+    NilaiModule,
   ],
   controllers: [],
   providers: [],
