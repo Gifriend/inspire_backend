@@ -27,6 +27,7 @@ async function main() {
   await prisma.material.deleteMany({});
   await prisma.session.deleteMany({});
   await prisma.elearningClassConfig.deleteMany({});
+  await prisma.nilai.deleteMany({});
   await prisma.kRS.deleteMany({});
 
   // ==========================================
@@ -113,6 +114,17 @@ async function main() {
     },
   });
 
+  // STUDENT 4: Dani (Flow 4: Has KHS & Transkrip - completed past semesters)
+  const daniTranskrip = await prisma.user.upsert({
+    where: { email: 'dani@univ.ac.id' }, update: { password },
+    create: {
+      name: 'Dani (Punya KHS & Transkrip)', email: 'dani@univ.ac.id', nim: '20239001',
+      role: Role.MAHASISWA, gender: Gender.LAKI_LAKI, password,
+      status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
+      ipk: 0, totalSksLulus: 0, // will be updated after Nilai seed
+    },
+  });
+
   // ==========================================
   // 3. MATAKULIAH & KELAS PERKULIAHAN
   // ==========================================
@@ -121,6 +133,81 @@ async function main() {
     kurikulum = await prisma.kurikulum.create({ data: { name: 'Kurikulum 2024', tahun: 2024, prodiId: ifProdi.id }});
   }
 
+  // --- Mata Kuliah Semester 1 (untuk histori KHS/Transkrip) ---
+  const mkDasarProg = await prisma.matakuliah.upsert({
+    where: { kode: 'IF101' }, update: {},
+    create: {
+      name: 'Dasar Pemrograman', kode: 'IF101', sks: 3, semester: 1,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkKalkulus1 = await prisma.matakuliah.upsert({
+    where: { kode: 'IF102' }, update: {},
+    create: {
+      name: 'Kalkulus I', kode: 'IF102', sks: 3, semester: 1,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkFisika = await prisma.matakuliah.upsert({
+    where: { kode: 'IF103' }, update: {},
+    create: {
+      name: 'Fisika Dasar', kode: 'IF103', sks: 3, semester: 1,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkBahasaInggris = await prisma.matakuliah.upsert({
+    where: { kode: 'IF104' }, update: {},
+    create: {
+      name: 'Bahasa Inggris', kode: 'IF104', sks: 2, semester: 1,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkPengkom = await prisma.matakuliah.upsert({
+    where: { kode: 'IF105' }, update: {},
+    create: {
+      name: 'Pengantar Teknologi Informasi', kode: 'IF105', sks: 2, semester: 1,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+
+  // --- Mata Kuliah Semester 2 (untuk histori KHS/Transkrip) ---
+  const mkOop = await prisma.matakuliah.upsert({
+    where: { kode: 'IF106' }, update: {},
+    create: {
+      name: 'Pemrograman Berorientasi Objek', kode: 'IF106', sks: 3, semester: 2,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkKalkulus2 = await prisma.matakuliah.upsert({
+    where: { kode: 'IF107' }, update: {},
+    create: {
+      name: 'Kalkulus II', kode: 'IF107', sks: 3, semester: 2,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkStatistika = await prisma.matakuliah.upsert({
+    where: { kode: 'IF108' }, update: {},
+    create: {
+      name: 'Probabilitas dan Statistika', kode: 'IF108', sks: 3, semester: 2,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkLogika = await prisma.matakuliah.upsert({
+    where: { kode: 'IF109' }, update: {},
+    create: {
+      name: 'Logika Informatika', kode: 'IF109', sks: 3, semester: 2,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+  const mkSisdig = await prisma.matakuliah.upsert({
+    where: { kode: 'IF110' }, update: {},
+    create: {
+      name: 'Sistem Digital', kode: 'IF110', sks: 2, semester: 2,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
+  });
+
+  // --- Mata Kuliah Semester 3 (existing + baru) ---
   const mkWeb = await prisma.matakuliah.upsert({
     where: { kode: 'IF201' }, update: {},
     create: {
@@ -135,6 +222,14 @@ async function main() {
       name: 'Algoritma dan Struktur Data', kode: 'IF202', sks: 3, semester: 3,
       jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id
     }
+  });
+
+  const mkBasisData = await prisma.matakuliah.upsert({
+    where: { kode: 'IF203' }, update: {},
+    create: {
+      name: 'Basis Data', kode: 'IF203', sks: 3, semester: 3,
+      jenisMK: 'Wajib', prodiId: ifProdi.id, kurikulumId: kurikulum.id,
+    },
   });
 
   const kelasWebA = await prisma.kelasPerkuliahan.upsert({
@@ -341,6 +436,106 @@ async function main() {
       tanggalPersetujuan: new Date(),
       kelasPerkuliahan: { connect: [{ id: kelasAlgoC.id }] },
     },
+  });
+
+  // ==========================================
+  // 4b. DANI's KRS & NILAI (KHS + TRANSKRIP DATA)
+  // ==========================================
+  // Dani sudah menyelesaikan semester 1 (2023/2024 Ganjil), semester 2 (2023/2024 Genap),
+  // dan sedang semester 3 aktif (2024/2025 Genap).
+
+  const sem1AY = '2023/2024 Ganjil';
+  const sem2AY = '2023/2024 Genap';
+  const sem3AY = activeAcademicYear; // semester aktif saat ini
+
+  // --- KRS Semester 1 (DISETUJUI, sudah selesai) ---
+  await prisma.kRS.upsert({
+    where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem1AY } },
+    update: { status: StatusKRS.DISETUJUI, totalSKS: 13, tanggalPersetujuan: new Date('2023-09-05') },
+    create: {
+      mahasiswaId: daniTranskrip.id, academicYear: sem1AY,
+      status: StatusKRS.DISETUJUI, totalSKS: 13,
+      tanggalPengajuan: new Date('2023-09-01'), tanggalPersetujuan: new Date('2023-09-05'),
+    },
+  });
+
+  // --- KRS Semester 2 (DISETUJUI, sudah selesai) ---
+  await prisma.kRS.upsert({
+    where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem2AY } },
+    update: { status: StatusKRS.DISETUJUI, totalSKS: 14, tanggalPersetujuan: new Date('2024-02-10') },
+    create: {
+      mahasiswaId: daniTranskrip.id, academicYear: sem2AY,
+      status: StatusKRS.DISETUJUI, totalSKS: 14,
+      tanggalPengajuan: new Date('2024-02-05'), tanggalPersetujuan: new Date('2024-02-10'),
+    },
+  });
+
+  // --- KRS Semester 3 Aktif (DISETUJUI, sedang berjalan) ---
+  await prisma.kRS.upsert({
+    where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem3AY } },
+    update: {
+      status: StatusKRS.DISETUJUI, totalSKS: 9,
+      kelasPerkuliahan: { set: [{ id: kelasWebA.id }, { id: kelasAlgoA.id }] },
+      tanggalPersetujuan: new Date(),
+    },
+    create: {
+      mahasiswaId: daniTranskrip.id, academicYear: sem3AY,
+      status: StatusKRS.DISETUJUI, totalSKS: 9,
+      tanggalPengajuan: new Date(), tanggalPersetujuan: new Date(),
+      kelasPerkuliahan: { connect: [{ id: kelasWebA.id }, { id: kelasAlgoA.id }] },
+    },
+  });
+
+  // --- NILAI Semester 1 (2023/2024 Ganjil) ---
+  // Dasar Pemrograman: A (4.0), Kalkulus I: B+ (3.5), Fisika: B (3.0), B.Inggris: A (4.0), PTI: A (4.0)
+  const nilaiSem1 = [
+    { mataKuliahId: mkDasarProg.id,    nilaiTugas: 88, nilaiUTS: 85, nilaiUAS: 90, nilaiAkhir: 88, nilaiHuruf: 'A',  indeksNilai: 4.0 },
+    { mataKuliahId: mkKalkulus1.id,     nilaiTugas: 78, nilaiUTS: 80, nilaiUAS: 75, nilaiAkhir: 78, nilaiHuruf: 'B+', indeksNilai: 3.5 },
+    { mataKuliahId: mkFisika.id,        nilaiTugas: 72, nilaiUTS: 70, nilaiUAS: 73, nilaiAkhir: 72, nilaiHuruf: 'B',  indeksNilai: 3.0 },
+    { mataKuliahId: mkBahasaInggris.id, nilaiTugas: 92, nilaiUTS: 88, nilaiUAS: 95, nilaiAkhir: 92, nilaiHuruf: 'A',  indeksNilai: 4.0 },
+    { mataKuliahId: mkPengkom.id,       nilaiTugas: 85, nilaiUTS: 90, nilaiUAS: 88, nilaiAkhir: 88, nilaiHuruf: 'A',  indeksNilai: 4.0 },
+  ];
+
+  for (const n of nilaiSem1) {
+    await prisma.nilai.upsert({
+      where: { mahasiswaId_mataKuliahId_academicYear: { mahasiswaId: daniTranskrip.id, mataKuliahId: n.mataKuliahId, academicYear: sem1AY } },
+      update: { ...n, status: 'SUDAH_ADA' },
+      create: { mahasiswaId: daniTranskrip.id, academicYear: sem1AY, status: 'SUDAH_ADA', ...n },
+    });
+  }
+
+  // --- NILAI Semester 2 (2023/2024 Genap) ---
+  // OOP: A (4.0), Kalkulus II: B (3.0), Statistika: B+ (3.5), Logika: A (4.0), Sisdig: B+ (3.5)
+  const nilaiSem2 = [
+    { mataKuliahId: mkOop.id,        nilaiTugas: 90, nilaiUTS: 87, nilaiUAS: 92, nilaiAkhir: 90, nilaiHuruf: 'A',  indeksNilai: 4.0 },
+    { mataKuliahId: mkKalkulus2.id,   nilaiTugas: 70, nilaiUTS: 72, nilaiUAS: 68, nilaiAkhir: 70, nilaiHuruf: 'B',  indeksNilai: 3.0 },
+    { mataKuliahId: mkStatistika.id,  nilaiTugas: 80, nilaiUTS: 78, nilaiUAS: 82, nilaiAkhir: 80, nilaiHuruf: 'B+', indeksNilai: 3.5 },
+    { mataKuliahId: mkLogika.id,      nilaiTugas: 88, nilaiUTS: 90, nilaiUAS: 85, nilaiAkhir: 88, nilaiHuruf: 'A',  indeksNilai: 4.0 },
+    { mataKuliahId: mkSisdig.id,      nilaiTugas: 82, nilaiUTS: 78, nilaiUAS: 80, nilaiAkhir: 80, nilaiHuruf: 'B+', indeksNilai: 3.5 },
+  ];
+
+  for (const n of nilaiSem2) {
+    await prisma.nilai.upsert({
+      where: { mahasiswaId_mataKuliahId_academicYear: { mahasiswaId: daniTranskrip.id, mataKuliahId: n.mataKuliahId, academicYear: sem2AY } },
+      update: { ...n, status: 'SUDAH_ADA' },
+      create: { mahasiswaId: daniTranskrip.id, academicYear: sem2AY, status: 'SUDAH_ADA', ...n },
+    });
+  }
+
+  // --- NILAI Semester 3 aktif: Basis Data sudah ada (mid-semester), Web & Algo belum ---
+  await prisma.nilai.upsert({
+    where: { mahasiswaId_mataKuliahId_academicYear: { mahasiswaId: daniTranskrip.id, mataKuliahId: mkBasisData.id, academicYear: sem3AY } },
+    update: { nilaiTugas: 85, nilaiUTS: 80, nilaiUAS: 0, nilaiAkhir: 0, nilaiHuruf: null, indeksNilai: null, status: 'BELUM_ADA' },
+    create: { mahasiswaId: daniTranskrip.id, academicYear: sem3AY, mataKuliahId: mkBasisData.id, status: 'BELUM_ADA', nilaiTugas: 85, nilaiUTS: 80 },
+  });
+
+  // Update IPK dan total SKS lulus untuk Dani berdasarkan Nilai yang sudah di-seed
+  // Sem1: 3*4.0 + 3*3.5 + 3*3.0 + 2*4.0 + 2*4.0 = 12+10.5+9+8+8 = 47.5 / 13 SKS = 3.65
+  // Sem2: 3*4.0 + 3*3.0 + 3*3.5 + 3*4.0 + 2*3.5 = 12+9+10.5+12+7 = 50.5 / 14 SKS = 3.61
+  // IPK: (47.5+50.5) / (13+14) = 98/27 = 3.63
+  await prisma.user.update({
+    where: { id: daniTranskrip.id },
+    data: { ipk: 3.63, totalSksLulus: 27, semesterTerakhir: sem3AY },
   });
 
   // ==========================================
