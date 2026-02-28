@@ -7,6 +7,7 @@ import { AcademicModule } from './academic/academic.module';
 import { LoggerMiddleware } from './common/middleware/middleware';
 import { PresensiModule } from './presensi/presensi.module';
 import { NotificationModule } from './notification/notifications.module';
+import { ScheduleModule } from './schedule/schedule.module';
 
 @Module({
   imports: [
@@ -16,7 +17,8 @@ import { NotificationModule } from './notification/notifications.module';
     ElearningModule,
     AcademicModule,
     PresensiModule,
-    NotificationModule
+    NotificationModule,
+    ScheduleModule,
   ],
   controllers: [],
   providers: [],
