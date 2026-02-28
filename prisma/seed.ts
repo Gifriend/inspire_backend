@@ -870,6 +870,16 @@ async function main() {
   }
 
   // ==========================================
+  // ASSIGN DOSEN PEMBIMBING AKADEMIK (PA)
+  // ==========================================
+  console.log('👨‍🏫 Assigning Dosen PA (Pembimbing Akademik)...');
+  // Assign Dr. Budi Hartono sebagai PA untuk semua mahasiswa
+  await prisma.user.updateMany({
+    where: { id: { in: [andiBlank.id, budiActive.id, citraAlgo.id, daniTranskrip.id] } },
+    data: { dosenPAId: dosen.id },
+  });
+
+  // ==========================================
   // SUMMARY
   // ==========================================
   console.log('✅ Seeding Complete!');
@@ -924,6 +934,17 @@ async function main() {
   console.log(`ALGO A ID: ${kelasAlgoA.id} | Dosen: ${dosenKolab1.email}`);
   console.log(`ALGO B ID: ${kelasAlgoB.id} | Dosen: ${dosen.email} [MASTER MERGE - SAME DOSEN]`);
   console.log(`ALGO C ID: ${kelasAlgoC.id} | Dosen: ${dosen.email} [MEMBER MERGE - SAME DOSEN]`);
+
+  console.log('\n👨‍🏫 DOSEN PA (PEMBIMBING AKADEMIK):');
+  console.log('Email: dosen@univ.ac.id | Pass: 123456');
+  console.log('  -> Dosen Dr. Budi Hartono adalah PA untuk semua mahasiswa (Andi, Budi, Citra, Dani).');
+  console.log('  -> GET /academic/pa/mahasiswa → lihat daftar mahasiswa bimbingan');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/semesters → semester tersedia');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/khs?semester=... → lihat KHS');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/khs/download?semester=... → download KHS PDF');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/transkrip → lihat transkrip');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/transkrip/download → download transkrip PDF');
+  console.log('  -> GET /academic/pa/mahasiswa/:id/ringkasan → ringkasan akademik untuk pertimbangan KRS');
   console.log('-------------------------------\n');
 }
 

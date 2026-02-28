@@ -4,6 +4,7 @@
     ForbiddenException,
     Get,
     Param,
+    ParseIntPipe,
     Post,
     Query,
     Req,
@@ -23,6 +24,10 @@
   @UseGuards(JwtAuthGuard)
   export class KrsController {
     constructor(private krsService: KrsService) {}
+
+    // ==========================================
+    // MAHASISWA — Fitur KRS
+    // ==========================================
 
     @Post('add-class')
     async addClass(@Req() req: AuthRequest, @Body() dto: AddClassDto) {
@@ -50,36 +55,87 @@
       return this.krsService.getKrs(req.user.id, academicYear);
     }
 
+    // ==========================================
+    // DOSEN PA — Review & Approve/Reject KRS mahasiswa bimbingan
+    // ==========================================
+
+    /**
+     * GET /krs/pa/mahasiswa
+     * Daftar KRS mahasiswa bimbingan PA.
+     * Query params optional: status (DIAJUKAN, DISETUJUI, DITOLAK, DRAFT), academicYear
+     */
+    @Get('pa/mahasiswa')
+    async getKrsMahasiswaBimbingan(
+      @Req() req: AuthRequest,
+      @Query('status') status?: string,
+      @Query('academicYear') academicYear?: string,
+    ) {
+      this.assertDosen(req);
+      return this.krsService.getKrsMahasiswaBimbingan(req.user.id, status, academicYear);
+    }
+
+    /**
+     * GET /krs/pa/detail/:krsId
+     * Detail KRS tertentu (sebelum approve/reject).
+     */
+    @Get('pa/detail/:krsId')
+    async getKrsDetailByPA(
+      @Req() req: AuthRequest,
+      @Param('krsId', ParseIntPipe) krsId: number,
+    ) {
+      this.assertDosen(req);
+      return this.krsService.getKrsDetailByPA(req.user.id, krsId);
+    }
+
+    /**
+     * POST /krs/approve/:krsId
+     * Hanya dosen PA dari mahasiswa pemilik KRS yang bisa approve.
+     */
     @Post('approve/:krsId')
     async approveKrs(
       @Req() req: AuthRequest,
-      @Param('krsId') krsId: number,
+      @Param('krsId', ParseIntPipe) krsId: number,
       @Body('catatan') catatan?: string,
     ) {
-      if (req.user.role !== 'DOSEN')
-        throw new ForbiddenException('Akses ditolak');
-      return this.krsService.approveKrs(req.user.id, +krsId, catatan);
+      this.assertDosen(req);
+      return this.krsService.approveKrs(req.user.id, krsId, catatan);
     }
 
+    /**
+     * POST /krs/reject/:krsId
+     * Hanya dosen PA dari mahasiswa pemilik KRS yang bisa reject.
+     */
     @Post('reject/:krsId')
     async rejectKrs(
       @Req() req: AuthRequest,
-      @Param('krsId') krsId: number,
+      @Param('krsId', ParseIntPipe) krsId: number,
       @Body('catatan') catatan: string,
     ) {
-      if (req.user.role !== 'DOSEN')
-        throw new ForbiddenException('Akses ditolak');
-      return this.krsService.rejectKrs(req.user.id, +krsId, catatan);
+      this.assertDosen(req);
+      return this.krsService.rejectKrs(req.user.id, krsId, catatan);
     }
 
+    /**
+     * POST /krs/cancel/:krsId
+     * Hanya dosen PA dari mahasiswa pemilik KRS yang bisa cancel.
+     */
     @Post('cancel/:krsId')
     async cancelKrs(
       @Req() req: AuthRequest,
-      @Param('krsId') krsId: number,
+      @Param('krsId', ParseIntPipe) krsId: number,
       @Body('catatan') catatan: string,
     ) {
-      if (req.user.role !== 'DOSEN')
-        throw new ForbiddenException('Akses ditolak');
-      return this.krsService.cancelKrs(req.user.id, +krsId, catatan);
+      this.assertDosen(req);
+      return this.krsService.cancelKrs(req.user.id, krsId, catatan);
+    }
+
+    // ==========================================
+    // Helper
+    // ==========================================
+
+    private assertDosen(req: AuthRequest) {
+      if (req.user.role !== 'DOSEN' && req.user.role !== 'KOORPRODI') {
+        throw new ForbiddenException('Hanya dosen yang bisa mengakses fitur ini');
+      }
     }
   }

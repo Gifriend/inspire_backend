@@ -4,6 +4,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 export enum Role {
   MAHASISWA = 'MAHASISWA',
   DOSEN = 'DOSEN',
+  KOORPRODI = 'KOORPRODI',
 }
 
 export enum Gender {

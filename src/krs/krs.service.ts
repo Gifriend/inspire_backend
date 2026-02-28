@@ -175,17 +175,154 @@ export class KrsService {
     return this.getOrCreateKrs(mahasiswaId, semester);
   }
 
-  // --- LECTURER FEATURES ---
+  // --- LECTURER (DOSEN PA) FEATURES ---
 
-  async approveKrs(dosenId: number, krsId: number, catatan?: string) {
-    // Validate Lecturer: Ensure user is a LECTURER or PROGRAM COORDINATOR
+  /**
+   * Verifikasi bahwa dosen adalah PA dari mahasiswa yang memiliki KRS ini.
+   * Mengembalikan KRS yang sudah di-load beserta data mahasiswanya.
+   */
+  private async verifyPAForKrs(dosenId: number, krsId: number) {
     const dosen = await this.prisma.user.findUnique({
       where: { id: dosenId },
     });
 
     if (!dosen || (dosen.role !== 'DOSEN' && dosen.role !== 'KOORPRODI')) {
       throw new ForbiddenException(
-        'Hanya Dosen atau Koorprodi yang dapat menyetujui KRS',
+        'Hanya Dosen atau Koorprodi yang dapat mengakses fitur ini',
+      );
+    }
+
+    const krs = await this.prisma.kRS.findUnique({
+      where: { id: krsId },
+      include: {
+        mahasiswa: { select: { id: true, name: true, nim: true, dosenPAId: true } },
+        kelasPerkuliahan: { include: { mataKuliah: true, dosen: true } },
+      },
+    });
+
+    if (!krs) throw new NotFoundException('KRS tidak ditemukan');
+
+    // Cek apakah dosen ini adalah Pembimbing Akademik dari mahasiswa pemilik KRS
+    if (krs.mahasiswa.dosenPAId !== dosenId) {
+      throw new ForbiddenException(
+        'Anda bukan Pembimbing Akademik dari mahasiswa ini. Hanya dosen PA yang dapat approve/reject KRS.',
+      );
+    }
+
+    return krs;
+  }
+
+  /**
+   * Daftar KRS mahasiswa bimbingan PA (untuk dosen melihat KRS yang perlu di-review).
+   * Bisa filter berdasarkan status (DIAJUKAN, DISETUJUI, DITOLAK, DRAFT) dan academicYear.
+   */
+  async getKrsMahasiswaBimbingan(
+    dosenId: number,
+    statusFilter?: string,
+    academicYear?: string,
+  ) {
+    const dosen = await this.prisma.user.findUnique({
+      where: { id: dosenId },
+    });
+    if (!dosen || (dosen.role !== 'DOSEN' && dosen.role !== 'KOORPRODI')) {
+      throw new ForbiddenException('Hanya dosen yang bisa mengakses fitur ini');
+    }
+
+    // Cari semua mahasiswa bimbingan PA dosen ini
+    const mahasiswaIds = await this.prisma.user.findMany({
+      where: { dosenPAId: dosenId, role: 'MAHASISWA' },
+      select: { id: true },
+    });
+
+    const where: any = {
+      mahasiswaId: { in: mahasiswaIds.map((m) => m.id) },
+    };
+
+    if (statusFilter) {
+      where.status = statusFilter as StatusKRS;
+    }
+
+    if (academicYear) {
+      where.academicYear = this.normalizeAcademicYear(academicYear).canonical;
+    }
+
+    const krsList = await this.prisma.kRS.findMany({
+      where,
+      include: {
+        mahasiswa: {
+          select: { id: true, name: true, nim: true, ipk: true, totalSksLulus: true },
+        },
+        kelasPerkuliahan: {
+          include: { mataKuliah: { select: { kode: true, name: true, sks: true } } },
+        },
+      },
+      orderBy: [
+        { status: 'asc' },        // DIAJUKAN dulu
+        { tanggalPengajuan: 'desc' },
+      ],
+    });
+
+    return krsList.map((krs) => ({
+      id: krs.id,
+      academicYear: krs.academicYear,
+      status: krs.status,
+      totalSKS: krs.totalSKS,
+      tanggalPengajuan: krs.tanggalPengajuan,
+      tanggalPersetujuan: krs.tanggalPersetujuan,
+      catatanDosen: krs.catatanDosen,
+      mahasiswa: {
+        id: krs.mahasiswa.id,
+        nama: krs.mahasiswa.name,
+        nim: krs.mahasiswa.nim ?? '-',
+        ipk: krs.mahasiswa.ipk ?? 0,
+        totalSksLulus: krs.mahasiswa.totalSksLulus ?? 0,
+      },
+      matakuliah: krs.kelasPerkuliahan.map((kp) => ({
+        kelasId: kp.id,
+        kodeMK: kp.mataKuliah.kode,
+        namaMK: kp.mataKuliah.name,
+        sks: kp.mataKuliah.sks,
+      })),
+    }));
+  }
+
+  /**
+   * Detail KRS mahasiswa tertentu (untuk dosen PA melihat detail sebelum approve).
+   */
+  async getKrsDetailByPA(dosenId: number, krsId: number) {
+    const krs = await this.verifyPAForKrs(dosenId, krsId);
+
+    return {
+      id: krs.id,
+      academicYear: krs.academicYear,
+      status: krs.status,
+      totalSKS: krs.totalSKS,
+      tanggalPengajuan: krs.tanggalPengajuan,
+      tanggalPersetujuan: krs.tanggalPersetujuan,
+      catatanDosen: krs.catatanDosen,
+      mahasiswa: {
+        id: krs.mahasiswa.id,
+        nama: krs.mahasiswa.name,
+        nim: krs.mahasiswa.nim ?? '-',
+      },
+      kelasPerkuliahan: krs.kelasPerkuliahan.map((kp) => ({
+        kelasId: kp.id,
+        kodeMK: kp.mataKuliah.kode,
+        namaMK: kp.mataKuliah.name,
+        sks: kp.mataKuliah.sks,
+        namaKelas: kp.nama,
+        dosenPengampu: kp.dosen.name,
+      })),
+    };
+  }
+
+  async approveKrs(dosenId: number, krsId: number, catatan?: string) {
+    // Verifikasi bahwa dosen adalah PA dari mahasiswa pemilik KRS
+    const krs = await this.verifyPAForKrs(dosenId, krsId);
+
+    if (krs.status !== StatusKRS.DIAJUKAN) {
+      throw new BadRequestException(
+        `KRS tidak bisa disetujui karena status saat ini: ${krs.status}`,
       );
     }
 
@@ -200,6 +337,15 @@ export class KrsService {
   }
 
   async rejectKrs(dosenId: number, krsId: number, catatan: string) {
+    // Verifikasi bahwa dosen adalah PA dari mahasiswa pemilik KRS
+    const krs = await this.verifyPAForKrs(dosenId, krsId);
+
+    if (krs.status !== StatusKRS.DIAJUKAN) {
+      throw new BadRequestException(
+        `KRS tidak bisa ditolak karena status saat ini: ${krs.status}`,
+      );
+    }
+
     return this.prisma.kRS.update({
       where: { id: krsId },
       data: {
@@ -210,6 +356,15 @@ export class KrsService {
   }
 
   async cancelKrs(dosenId: number, krsId: number, catatan: string) {
+    // Verifikasi bahwa dosen adalah PA dari mahasiswa pemilik KRS
+    const krs = await this.verifyPAForKrs(dosenId, krsId);
+
+    if (krs.status !== StatusKRS.DISETUJUI) {
+      throw new BadRequestException(
+        `KRS tidak bisa dibatalkan karena status saat ini: ${krs.status}`,
+      );
+    }
+
     return this.prisma.kRS.update({
       where: { id: krsId },
       data: {

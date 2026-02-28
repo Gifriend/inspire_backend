@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class GetKhsDto {
   @IsNotEmpty()
@@ -82,4 +82,28 @@ export class TranskripResponseDto {
     predikat: string;
   };
   bySemester: TranskripSemesterDto[];
+}
+
+// ==============================
+// DTO khusus Dosen Pembimbing Akademik (PA)
+// ==============================
+
+// Query param optional semester untuk endpoint PA
+export class GetPaKhsQueryDto {
+  @IsOptional()
+  @IsString()
+  semester?: string;
+}
+
+// Ringkasan mahasiswa bimbingan PA
+export class MahasiswaBimbinganDto {
+  id: number;
+  nama: string;
+  nim: string;
+  prodi: string;
+  angkatan: string;
+  status: string;
+  ipk: number;
+  totalSksLulus: number;
+  semesterTerakhir: string | null;
 }

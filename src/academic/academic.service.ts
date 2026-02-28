@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { KhsResponseDto, TranskripResponseDto } from './dto/academic.dto';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { KhsResponseDto, TranskripResponseDto, MahasiswaBimbinganDto } from './dto/academic.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import * as PDFDocument from 'pdfkit';
 
@@ -519,6 +519,172 @@ export class AcademicService {
       .text('NIP. ......................................', sigX, doc.y, { width: 180, align: 'center' });
 
     return this.pdfToBuffer(doc);
+  }
+
+  // ==========================================
+  // 4. DOSEN PEMBIMBING AKADEMIK (PA) — FITUR BARU
+  // ==========================================
+
+  /**
+   * Daftar mahasiswa bimbingan PA dari dosen yang sedang login.
+   */
+  async getMahasiswaBimbinganPA(dosenId: number): Promise<MahasiswaBimbinganDto[]> {
+    // Pastikan user adalah dosen/koorprodi
+    const dosen = await this.prisma.user.findUnique({ where: { id: dosenId } });
+    if (!dosen || (dosen.role !== 'DOSEN' && dosen.role !== 'KOORPRODI')) {
+      throw new ForbiddenException('Hanya dosen yang bisa mengakses fitur PA');
+    }
+
+    const mahasiswaList = await this.prisma.user.findMany({
+      where: { dosenPAId: dosenId, role: 'MAHASISWA' },
+      include: { prodi: true },
+      orderBy: { name: 'asc' },
+    });
+
+    return mahasiswaList.map((m) => ({
+      id: m.id,
+      nama: m.name,
+      nim: m.nim ?? '-',
+      prodi: m.prodi?.name ?? '-',
+      angkatan: this.getAngkatan(m.nim),
+      status: m.status,
+      ipk: m.ipk ?? 0,
+      totalSksLulus: m.totalSksLulus ?? 0,
+      semesterTerakhir: m.semesterTerakhir ?? null,
+    }));
+  }
+
+  /**
+   * Daftar semester yang tersedia untuk mahasiswa (dari perspektif PA).
+   */
+  async getStudentSemestersByPA(dosenId: number, mahasiswaId: number): Promise<string[]> {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+    return this.getStudentSemesters(mahasiswaId);
+  }
+
+  /**
+   * KHS mahasiswa (view) — oleh dosen PA.
+   */
+  async getKhsByPA(dosenId: number, mahasiswaId: number, semester: string): Promise<KhsResponseDto> {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+    const khs = await this.getKhs(mahasiswaId, semester);
+
+    // Tambahkan nama dosen PA ke response
+    const dosen = await this.prisma.user.findUnique({
+      where: { id: dosenId },
+      select: { name: true },
+    });
+    khs.mahasiswa.pembimbingAkademik = dosen?.name ?? null;
+
+    return khs;
+  }
+
+  /**
+   * Download KHS PDF mahasiswa — oleh dosen PA.
+   */
+  async downloadKhsByPA(dosenId: number, mahasiswaId: number, semester: string): Promise<Buffer> {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+    return this.generateKhsPdf(mahasiswaId, semester);
+  }
+
+  /**
+   * Transkrip mahasiswa (view) — oleh dosen PA.
+   */
+  async getTranskripByPA(dosenId: number, mahasiswaId: number): Promise<TranskripResponseDto> {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+    return this.getTranskrip(mahasiswaId);
+  }
+
+  /**
+   * Download Transkrip PDF mahasiswa — oleh dosen PA.
+   */
+  async downloadTranskripByPA(dosenId: number, mahasiswaId: number): Promise<Buffer> {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+    return this.generateTranskripPdf(mahasiswaId);
+  }
+
+  /**
+   * Ringkasan akademik mahasiswa untuk pertimbangan KRS.
+   * Memberikan data komprehensif: IPK, IPS per semester, dan rekomendasi beban SKS.
+   */
+  async getRingkasanAkademikByPA(dosenId: number, mahasiswaId: number) {
+    await this.verifyPAAccess(dosenId, mahasiswaId);
+
+    const mahasiswa = await this.prisma.user.findUnique({
+      where: { id: mahasiswaId },
+      include: { prodi: true },
+    });
+    if (!mahasiswa) throw new NotFoundException('Mahasiswa tidak ditemukan');
+
+    // Ambil semua semester yang ada
+    const semesters = await this.getStudentSemesters(mahasiswaId);
+
+    // Hitung IPS per semester
+    const ipsPerSemester: { semester: string; ips: number; totalSks: number }[] = [];
+    for (const sem of semesters) {
+      const rawNilai = await this.prisma.nilai.findMany({
+        where: { mahasiswaId, academicYear: sem, status: 'SUDAH_ADA' },
+        include: { mataKuliah: true },
+      });
+
+      let totalSks = 0;
+      let totalNilaiSks = 0;
+      for (const n of rawNilai) {
+        const sks = n.mataKuliah.sks;
+        const idx = n.indeksNilai ?? 0;
+        totalSks += sks;
+        totalNilaiSks += sks * idx;
+      }
+
+      const ips = totalSks > 0 ? parseFloat((totalNilaiSks / totalSks).toFixed(2)) : 0;
+      ipsPerSemester.push({ semester: sem, ips, totalSks });
+    }
+
+    // IPS terakhir untuk rekomendasi beban SKS
+    const ipsTermutakhir = ipsPerSemester.length > 0 ? ipsPerSemester[0].ips : 0;
+    const ipk = await this.calculateRealIPK(mahasiswaId);
+
+    return {
+      mahasiswa: {
+        nama: mahasiswa.name,
+        nim: mahasiswa.nim ?? '-',
+        prodi: mahasiswa.prodi?.name ?? '-',
+        angkatan: this.getAngkatan(mahasiswa.nim),
+        status: mahasiswa.status,
+      },
+      ipk,
+      totalSksLulus: mahasiswa.totalSksLulus ?? 0,
+      ipsTermutakhir,
+      rekomendasiBebanSks: this.getMaksBebaSks(ipsTermutakhir),
+      riwayatIps: ipsPerSemester,
+    };
+  }
+
+  // ==========================================
+  // PRIVATE: Verifikasi Akses Dosen PA
+  // ==========================================
+
+  /**
+   * Pastikan dosen adalah pembimbing akademik dari mahasiswa tersebut.
+   */
+  private async verifyPAAccess(dosenId: number, mahasiswaId: number): Promise<void> {
+    const dosen = await this.prisma.user.findUnique({ where: { id: dosenId } });
+    if (!dosen || (dosen.role !== 'DOSEN' && dosen.role !== 'KOORPRODI')) {
+      throw new ForbiddenException('Hanya dosen yang bisa mengakses fitur PA');
+    }
+
+    const mahasiswa = await this.prisma.user.findUnique({
+      where: { id: mahasiswaId },
+      select: { dosenPAId: true, role: true },
+    });
+
+    if (!mahasiswa || mahasiswa.role !== 'MAHASISWA') {
+      throw new NotFoundException('Mahasiswa tidak ditemukan');
+    }
+
+    if (mahasiswa.dosenPAId !== dosenId) {
+      throw new ForbiddenException('Anda bukan pembimbing akademik mahasiswa ini');
+    }
   }
 
   // ==========================================

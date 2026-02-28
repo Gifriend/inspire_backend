@@ -125,6 +125,10 @@ model User {
   fakultas Fakultas @relation(fields: [fakultasId], references: [id])
   prodi    Prodi?   @relation(fields: [prodiId], references: [id])
 
+  // Relasi Pembimbing Akademik (PA)
+  dosenPAId Int?
+  dosenPA   User?  @relation("PembimbingAkademik", fields: [dosenPAId], references: [id])
+
   // Relasi Mahasiswa
   krs             KRS[]
   nilai           Nilai[]
@@ -139,6 +143,7 @@ model User {
   pembimbingSkripsi   Skripsi[]          @relation("PembimbingUtama")
   coPembimbingSkripsi Skripsi[]          @relation("CoPembimbing")
   pengumuman          Pengumuman[] // Pengumuman yang dibuat dosen/koorprodi
+  mahasiswaBimbinganPA User[]       @relation("PembimbingAkademik") // Mahasiswa yang dibimbing secara akademik
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
