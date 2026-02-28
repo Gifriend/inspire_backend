@@ -21,6 +21,22 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ElearningService {
   constructor(private prisma: PrismaService) {}
 
+  private async resolveEffectiveKelasId(kelasPerkuliahanId: number) {
+    const config = await this.prisma.elearningClassConfig.findUnique({
+      where: { kelasPerkuliahanId },
+      select: {
+        sourceKelasPerkuliahanId: true,
+        isMergedClass: true,
+      },
+    });
+
+    if (config?.isMergedClass && config.sourceKelasPerkuliahanId) {
+      return config.sourceKelasPerkuliahanId;
+    }
+
+    return kelasPerkuliahanId;
+  }
+
   // 1. Create Session/Meeting
   async createSession(data: CreateSessionDto) {
     return this.prisma.session.create({
@@ -208,21 +224,31 @@ export class ElearningService {
 
   // 7. Get Course Content (For E-learning Page)
   async getCourseContent(kelasPerkuliahanId: number) {
+    const effectiveKelasId = await this.resolveEffectiveKelasId(kelasPerkuliahanId);
+
     return this.prisma.session.findMany({
-      where: { kelasPerkuliahanId },
+      where: { kelasPerkuliahanId: effectiveKelasId },
       orderBy: { weekNumber: 'asc' },
       include: {
-        materials: true,
-        assignments: true,
-        quizzes: true,
+        materials: {
+          where: { isHidden: false },
+        },
+        assignments: {
+          where: { isHidden: false },
+        },
+        quizzes: {
+          where: { isHidden: false },
+        },
       },
     });
   }
 
   // 7b. Get Course Detail (Complete Course Information)
   async getCourseDetail(kelasPerkuliahanId: number) {
+    const effectiveKelasId = await this.resolveEffectiveKelasId(kelasPerkuliahanId);
+
     const kelas = await this.prisma.kelasPerkuliahan.findUnique({
-      where: { id: kelasPerkuliahanId },
+      where: { id: effectiveKelasId },
       include: {
         mataKuliah: {
           select: {
@@ -542,6 +568,7 @@ export class ElearningService {
       where: { dosenId: userId },
       include: {
         mataKuliah: true,
+        elearningConfig: true,
         _count: { select: { krs: true, sessions: true } },
       },
       orderBy: { createdAt: 'desc' },

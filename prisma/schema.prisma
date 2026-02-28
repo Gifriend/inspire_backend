@@ -135,6 +135,7 @@ model User {
 
   // Relasi Dosen
   mengajarMataKuliah  KelasPerkuliahan[]
+  elearningClassConfigs ElearningClassConfig[] @relation("ElearningConfigCreatedBy")
   pembimbingSkripsi   Skripsi[]          @relation("PembimbingUtama")
   coPembimbingSkripsi Skripsi[]          @relation("CoPembimbing")
   pengumuman          Pengumuman[] // Pengumuman yang dibuat dosen/koorprodi
@@ -213,12 +214,30 @@ model KelasPerkuliahan {
 
   // E-Learning Sessions (Materi & Tugas)
   sessions Session[]
+  elearningConfig ElearningClassConfig?
+  asElearningSourceFor ElearningClassConfig[] @relation("ElearningConfigSourceClass")
 
   // Presensi Sessions (Absensi Kehadiran)
   presensiSessions PresensiSession[]
 
   // Pengumuman (Many-to-Many)
   pengumuman Pengumuman[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ElearningClassConfig {
+  id                       Int                @id @default(autoincrement())
+  kelasPerkuliahanId       Int                @unique
+  setupMode                ElearningSetupMode @default(NEW)
+  sourceKelasPerkuliahanId Int?
+  isMergedClass            Boolean            @default(false)
+  createdByDosenId         Int
+
+  kelasPerkuliahan      KelasPerkuliahan  @relation(fields: [kelasPerkuliahanId], references: [id], onDelete: Cascade)
+  sourceKelasPerkuliahan KelasPerkuliahan? @relation("ElearningConfigSourceClass", fields: [sourceKelasPerkuliahanId], references: [id], onDelete: SetNull)
+  createdByDosen        User              @relation("ElearningConfigCreatedBy", fields: [createdByDosenId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -396,6 +415,7 @@ model Material {
   type      MaterialType
   content   String?
   fileUrl   String?
+  isHidden  Boolean      @default(false)
   sessionId String
 
   session Session @relation(fields: [sessionId], references: [id])
@@ -416,6 +436,7 @@ model Assignment {
   fileUrl     String?
   deadline    DateTime
   allowLate   Boolean  @default(false)
+  isHidden    Boolean  @default(false)
   sessionId   String
 
   session     Session      @relation(fields: [sessionId], references: [id])
@@ -446,6 +467,7 @@ model Quiz {
   startTime     DateTime
   endTime       DateTime
   gradingMethod QuizGradingMethod @default(HIGHEST_GRADE)
+  isHidden      Boolean           @default(false)
   sessionId     String
 
   session   Session       @relation(fields: [sessionId], references: [id])
@@ -459,6 +481,11 @@ enum QuizGradingMethod {
   HIGHEST_GRADE
   LATEST_GRADE
   AVERAGE_GRADE
+}
+
+enum ElearningSetupMode {
+  NEW
+  EXISTING
 }
 
 model Question {
