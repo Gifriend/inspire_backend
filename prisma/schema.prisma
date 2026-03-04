@@ -240,6 +240,8 @@ model ElearningClassConfig {
   isMergedClass            Boolean            @default(false)
   createdByDosenId         Int
 
+  googleClassroomId        String?            @unique // Menyimpan ID kelas dari Google Classroom
+
   kelasPerkuliahan      KelasPerkuliahan  @relation(fields: [kelasPerkuliahanId], references: [id], onDelete: Cascade)
   sourceKelasPerkuliahan KelasPerkuliahan? @relation("ElearningConfigSourceClass", fields: [sourceKelasPerkuliahanId], references: [id], onDelete: SetNull)
   createdByDosen        User              @relation("ElearningConfigCreatedBy", fields: [createdByDosenId], references: [id])

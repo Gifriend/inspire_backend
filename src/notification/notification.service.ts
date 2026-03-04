@@ -9,7 +9,7 @@ export class NotificationService implements OnModuleInit {
     if (admin.apps.length === 0) {
       const serviceAccountPath = path.join(
         process.cwd(),
-        'bakticilik-2d48a-firebase-adminsdk-fbsvc-2e0df9f5c0.json',
+        'my-first-project-cdcf3-firebase-adminsdk-fbsvc-66a48d45fa.json',
       );
 
       admin.initializeApp({

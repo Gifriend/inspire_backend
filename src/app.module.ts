@@ -9,6 +9,7 @@ import { PresensiModule } from './presensi/presensi.module';
 import { NotificationModule } from './notification/notifications.module';
 import { ScheduleModule } from './schedule/schedule.module';
 import { NilaiModule } from './nilai/nilai.module';
+import { ClassroomModule } from './classroom/classroom.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { NilaiModule } from './nilai/nilai.module';
     NotificationModule,
     ScheduleModule,
     NilaiModule,
+    ClassroomModule
   ],
   controllers: [],
   providers: [],

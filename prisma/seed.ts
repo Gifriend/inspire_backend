@@ -51,7 +51,7 @@ async function main() {
   const dosen = await prisma.user.upsert({
     where: { email: 'dosen@univ.ac.id' }, update: { password },
     create: {
-      name: 'Dr. Budi Hartono', email: 'dosen@univ.ac.id', nip: '19809001',
+      name: 'Dr. Budi Hartono', email: 'dosen@univ.ac.id', nip: '19800101',
       role: Role.DOSEN, gender: Gender.LAKI_LAKI, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
@@ -78,7 +78,7 @@ async function main() {
   const koorprodi = await prisma.user.upsert({
     where: { email: 'koor@univ.ac.id' }, update: { password },
     create: {
-      name: 'Prof. Kurniawan', email: 'koor@univ.ac.id', nip: '19759001',
+      name: 'Prof. Kurniawan', email: 'koor@univ.ac.id', nip: '19750101',
       role: Role.KOORPRODI, gender: Gender.LAKI_LAKI, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
@@ -108,7 +108,7 @@ async function main() {
   const citraAlgo = await prisma.user.upsert({
     where: { email: 'citra@univ.ac.id' }, update: { password },
     create: {
-      name: 'Citra (Merge Same Dosen)', email: 'citra@univ.ac.id', nim: '20249003',
+      name: 'Citra (Merge Same Dosen)', email: 'citra@univ.ac.id', nim: '20240002',
       role: Role.MAHASISWA, gender: Gender.PEREMPUAN, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
@@ -878,6 +878,122 @@ async function main() {
     where: { id: { in: [andiBlank.id, budiActive.id, citraAlgo.id, daniTranskrip.id] } },
     data: { dosenPAId: dosen.id },
   });
+
+  // ==========================================
+  // EXTRA: Simulate controller/service flows for testing
+  // ==========================================
+  console.log('🧪 Simulating controller/service flows for testing...');
+
+  // 1) Andi: add class Pemrograman Web A to KRS, submit, and approve by PA (dosen)
+  try {
+    const andiKrs = await prisma.kRS.findUnique({
+      where: { mahasiswaId_academicYear: { mahasiswaId: andiBlank.id, academicYear: activeAcademicYear } },
+      include: { kelasPerkuliahan: true },
+    });
+
+    if (andiKrs) {
+      if ((andiKrs.kelasPerkuliahan || []).length === 0) {
+        const updated = await prisma.kRS.update({
+          where: { id: andiKrs.id },
+          data: {
+            totalSKS: { increment: mkWeb.sks },
+            kelasPerkuliahan: { connect: { id: kelasWebA.id } },
+          },
+        });
+        console.log(`- Andi: connected to kelas ${kelasWebA.nama ?? kelasWebA.id}`);
+
+        await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DIAJUKAN, tanggalPengajuan: new Date() } });
+        console.log('- Andi: submitted KRS (DIAJUKAN)');
+
+        await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DISETUJUI, tanggalPersetujuan: new Date(), catatanDosen: 'Disetujui oleh seed' } });
+        console.log('- Dosen: approved Andi KRS (DISETUJUI)');
+      } else {
+        console.log('- Andi already has classes in KRS, skipping add/submit flow');
+      }
+    }
+  } catch (e) {
+    console.error('⚠️ Andi KRS flow failed:', e instanceof Error ? e.message : e);
+  }
+
+  // 2) Clone elearning content for EXISTING non-merged configs (simulate clone behavior)
+  try {
+    const configsToClone = await prisma.elearningClassConfig.findMany({
+      where: { setupMode: ElearningSetupMode.EXISTING, isMergedClass: false, sourceKelasPerkuliahanId: { not: null } },
+    });
+
+    for (const cfg of configsToClone) {
+      await prisma.$transaction(async (tx) => {
+        const existingCount = await tx.session.count({ where: { kelasPerkuliahanId: cfg.kelasPerkuliahanId } });
+        if (existingCount > 0) return; // skip if target already has content
+
+        const sourceSessions = await tx.session.findMany({
+          where: { kelasPerkuliahanId: cfg.sourceKelasPerkuliahanId! },
+          include: { materials: true, assignments: true, quizzes: { include: { questions: true } } },
+          orderBy: { weekNumber: 'asc' },
+        });
+
+        for (const s of sourceSessions) {
+          await tx.session.create({
+            data: {
+              title: s.title,
+              description: s.description,
+              weekNumber: s.weekNumber,
+              kelasPerkuliahanId: cfg.kelasPerkuliahanId,
+              materials: {
+                create: s.materials.map((m) => ({ title: m.title, type: m.type, content: m.content, fileUrl: m.fileUrl, isHidden: true })),
+              },
+              assignments: {
+                create: s.assignments.map((a) => ({ title: a.title, description: a.description, fileUrl: a.fileUrl, deadline: a.deadline, allowLate: a.allowLate, isHidden: true })),
+              },
+              quizzes: {
+                create: s.quizzes.map((q) => ({
+                  title: q.title,
+                  description: q.description,
+                  duration: q.duration,
+                  startTime: q.startTime,
+                  endTime: q.endTime,
+                  gradingMethod: q.gradingMethod,
+                  isHidden: true,
+                  questions: { create: q.questions.map((qq) => ({ text: qq.text, type: qq.type, options: qq.options ?? undefined, correctAnswer: qq.correctAnswer, points: qq.points })) },
+                })),
+              },
+            },
+          });
+        }
+        console.log(`- Cloned ${sourceSessions.length} sessions into kelasId=${cfg.kelasPerkuliahanId}`);
+      });
+    }
+  } catch (e) {
+    console.error('⚠️ Elearning clone flow failed:', e instanceof Error ? e.message : e);
+  }
+
+  // 3) Presensi: create a token session for kelasWebB and mark Budi hadir
+  try {
+    const generateToken = (length: number) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < length; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+      return result;
+    };
+
+    const token = generateToken(8);
+    const presensiSession = await prisma.presensiSession.create({
+      data: {
+        title: 'Sesi Presensi Testing',
+        type: 'KELAS',
+        kelasPerkuliahanId: kelasWebB.id,
+        date: new Date(),
+        isOpen: true,
+        token,
+        deadlineAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      },
+    });
+
+    await prisma.presensiRecord.create({ data: { sessionId: presensiSession.id, mahasiswaId: budiActive.id, method: 'TOKEN', status: 'HADIR' } });
+    console.log(`- Presensi created for kelasWebB (session ${presensiSession.id}), Budi marked HADIR (token ${token})`);
+  } catch (e) {
+    console.error('⚠️ Presensi simulation failed:', e instanceof Error ? e.message : e);
+  }
 
   // ==========================================
   // SUMMARY
