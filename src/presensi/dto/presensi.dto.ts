@@ -26,10 +26,6 @@ export class CreatePresensiDto {
 
 export class SubmitPresensiDto {
   @IsNotEmpty()
-  @IsInt()
-  sessionId: number;
-
-  @IsNotEmpty()
   @IsString()
   @Length(8, 8, { message: 'Token harus 8 karakter' })
   token: string; // GANTI: Swafoto jadi Token

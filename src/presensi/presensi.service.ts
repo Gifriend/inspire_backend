@@ -87,20 +87,17 @@ export class PresensiService {
   // 2. SUBMIT VIA TOKEN (STUDENT)
   // ============================================
   async submitPresensi(dto: SubmitPresensiDto, mahasiswa: User) {
+    const normalizedToken = dto.token.trim().toUpperCase();
+
     const session = await this.prisma.presensiSession.findUnique({
-      where: { id: dto.sessionId },
+      where: { token: normalizedToken },
     });
-    if (!session) throw new NotFoundException('Sesi tidak ditemukan');
+    if (!session) throw new NotFoundException('Sesi/token presensi tidak ditemukan.');
     if (!session.isOpen) throw new BadRequestException('Sesi sudah ditutup.');
 
     // VALIDATE DEADLINE
     if (session.deadlineAt && new Date() > session.deadlineAt) {
       throw new BadRequestException('Batas waktu presensi sudah terlewat.');
-    }
-
-    // VALIDATE TOKEN
-    if (session.token !== dto.token) {
-      throw new BadRequestException('Token presensi salah!');
     }
 
     // Validate KRS & Final Exam Threshold
