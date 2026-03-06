@@ -27,33 +27,38 @@ export class ElearningController {
   constructor(private readonly elearningService: ElearningService) {}
 
   // POST: /elearning/session
+  @UseGuards(JwtAuthGuard)
   @Post('session')
-  async createSession(@Body() dto: CreateSessionDto) {
-    return this.elearningService.createSession(dto);
+  async createSession(@Body() dto: CreateSessionDto, @Req() req) {
+    return this.elearningService.createSession(dto, req.user);
   }
 
   // POST: /elearning/material
+  @UseGuards(JwtAuthGuard)
   @Post('material')
   async createMaterial(@Body() dto: CreateMaterialDto, @Req() req) {
     return this.elearningService.createMaterial(dto, req.user);
   }
 
   // POST: /elearning/assignment
+  @UseGuards(JwtAuthGuard)
   @Post('assignment')
-  async createAssignment(@Body() dto: CreateAssignmentDto) {
-    return this.elearningService.createAssignment(dto);
+  async createAssignment(@Body() dto: CreateAssignmentDto, @Req() req) {
+    return this.elearningService.createAssignment(dto, req.user);
   }
 
   // POST: /elearning/assignment/submit
+  @UseGuards(JwtAuthGuard)
   @Post('assignment/submit')
   async submitAssignment(@Body() dto: SubmitAssignmentDto, @Req() req) {
     return this.elearningService.submitAssignment(dto, req.user);
   }
 
   // POST: /elearning/quiz
+  @UseGuards(JwtAuthGuard)
   @Post('quiz')
-  async createQuiz(@Body() dto: CreateQuizDto) {
-    return this.elearningService.createQuiz(dto);
+  async createQuiz(@Body() dto: CreateQuizDto, @Req() req) {
+    return this.elearningService.createQuiz(dto, req.user);
   }
 
   // GET: /elearning/course/:kelasId

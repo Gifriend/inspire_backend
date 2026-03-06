@@ -67,7 +67,10 @@ export class ElearningService {
   }
 
   // 1. Create Session/Meeting
-  async createSession(data: CreateSessionDto) {
+  async createSession(data: CreateSessionDto, user: User) {
+    if (user.role !== Role.DOSEN) {
+      throw new ForbiddenException('Hanya dosen yang dapat membuat sesi pertemuan');
+    }
     return this.prisma.session.create({
       data: {
         title: data.title,
@@ -111,7 +114,10 @@ export class ElearningService {
   }
 
   // 3. Create Assignment
-  async createAssignment(data: CreateAssignmentDto) {
+  async createAssignment(data: CreateAssignmentDto, user: User) {
+    if (user.role !== Role.DOSEN) {
+      throw new ForbiddenException('Hanya dosen yang dapat membuat tugas');
+    }
     return this.prisma.assignment.create({
       data: {
         title: data.title,
@@ -171,24 +177,45 @@ export class ElearningService {
   }
 
   // 5. Create Quiz Complete with Questions
-  async createQuiz(data: CreateQuizDto) {
+  async createQuiz(data: CreateQuizDto, user: User) {
+    if (user.role !== Role.DOSEN) {
+      throw new ForbiddenException('Hanya dosen yang dapat membuat kuis');
+    }
+    // Normalize gradingMethod: accept short forms from client
+    const gmRaw = (data.gradingMethod ?? '').toString().toUpperCase();
+    let normalizedGm: 'HIGHEST_GRADE' | 'LATEST_GRADE' | 'AVERAGE_GRADE';
+    if (gmRaw === 'LATEST' || gmRaw === 'LATEST_GRADE') normalizedGm = 'LATEST_GRADE';
+    else if (gmRaw === 'HIGHEST' || gmRaw === 'HIGHEST_GRADE') normalizedGm = 'HIGHEST_GRADE';
+    else normalizedGm = 'AVERAGE_GRADE';
+
+    // Validate questions and normalize fields
+    if (!Array.isArray(data.questions) || data.questions.length === 0) {
+      throw new BadRequestException('questions harus diisi minimal satu');
+    }
+
+    const questionsToCreate = data.questions.map((q, idx) => {
+      const text = (q as any).text ?? (q as any).question;
+      if (!text || typeof text !== 'string') {
+        throw new BadRequestException(`Pertanyaan pada index ${idx} harus memiliki field 'text' atau 'question'`);
+      }
+      return {
+        text: text as string,
+        type: q.type,
+        options: q.options ?? undefined,
+        correctAnswer: q.correctAnswer ?? undefined,
+        points: q.points ?? 10,
+      } as any;
+    });
+
     return this.prisma.quiz.create({
       data: {
         title: data.title,
         duration: data.duration,
         startTime: new Date(data.startTime),
         endTime: new Date(data.endTime),
-        gradingMethod: data.gradingMethod,
+        gradingMethod: normalizedGm,
         sessionId: data.sessionId,
-        questions: {
-          create: data.questions.map((q) => ({
-            text: q.text,
-            type: q.type,
-            options: q.options, // Prisma automatically handles JSON
-            correctAnswer: q.correctAnswer,
-            points: q.points,
-          })),
-        },
+        questions: { create: questionsToCreate },
       },
       include: { questions: true },
     });

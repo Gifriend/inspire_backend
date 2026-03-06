@@ -1,51 +1,57 @@
 import { Type } from "class-transformer";
-import { IsString, IsArray, ValidateNested } from "class-validator";
+import {
+  IsString, IsArray, ValidateNested, IsNotEmpty, Min, IsInt, IsIn,
+  IsOptional, IsEnum, IsNumber, IsPositive, IsDateString,
+} from "class-validator";
 
 export class CreateSessionDto {
-  title: string;
-  description?: string;
-  weekNumber: number;
-  kelasPerkuliahanId: number;
+  @IsNotEmpty() @IsString() title: string;
+  @IsOptional() @IsString() description?: string;
+  @IsInt() @Min(1) weekNumber: number;
+  @IsInt() @Min(1) kelasPerkuliahanId: number;
 }
 
 export class CreateMaterialDto {
-  title: string;
-  type: 'TEXT' | 'FILE' | 'HYBRID';
-  content?: string;
-  fileUrl?: string;
-  sessionId: string;
+  @IsNotEmpty() @IsString() title: string;
+  @IsIn(['TEXT', 'FILE', 'HYBRID']) type: 'TEXT' | 'FILE' | 'HYBRID';
+  @IsOptional() @IsString() content?: string;
+  @IsOptional() @IsString() fileUrl?: string;
+  @IsNotEmpty() @IsString() sessionId: string;
 }
 
 export class CreateAssignmentDto {
-  title: string;
-  description?: string;
-  deadline: string; // ISO Date String
-  sessionId: string;
+  @IsNotEmpty() @IsString() title: string;
+  @IsOptional() @IsString() description?: string;
+  @IsNotEmpty() @IsDateString() deadline: string;
+  @IsNotEmpty() @IsString() sessionId: string;
 }
 
 export class SubmitAssignmentDto {
-  assignmentId: string;
-  studentId: number;
-  fileUrl?: string;
-  textContent?: string;
+  @IsNotEmpty() @IsString() assignmentId: string;
+  @IsOptional() @IsString() fileUrl?: string;
+  @IsOptional() @IsString() textContent?: string;
 }
 
 export class CreateQuestionDto {
-  text: string;
-  type: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE';
-  options?: any; // JSON array ["A", "B"]
-  correctAnswer: string;
-  points: number;
+  // Accept either `text` (preferred) or `question` (client alias)
+  @IsOptional() @IsString() text?: string;
+  @IsOptional() @IsString() question?: string;
+  @IsIn(['MULTIPLE_CHOICE', 'ESSAY', 'TRUE_FALSE']) type: 'MULTIPLE_CHOICE' | 'ESSAY' | 'TRUE_FALSE';
+  @IsOptional() @IsArray() options?: any[];
+  @IsOptional() @IsString() correctAnswer?: string;
+  @IsOptional() @IsNumber() @IsPositive() points?: number;
 }
 
 export class CreateQuizDto {
-  title: string;
-  duration: number; // menit
-  startTime: string;
-  endTime: string;
-  gradingMethod: 'HIGHEST_GRADE' | 'LATEST_GRADE' | 'AVERAGE_GRADE';
-  sessionId: string;
-  questions: CreateQuestionDto[];
+  @IsNotEmpty() @IsString() title: string;
+  @IsInt() @IsPositive() duration: number;
+  @IsNotEmpty() @IsDateString() startTime: string;
+  @IsNotEmpty() @IsDateString() endTime: string;
+  // Accept both short and long forms from client (e.g. "LATEST" or "LATEST_GRADE")
+  @IsIn(['HIGHEST_GRADE', 'LATEST_GRADE', 'AVERAGE_GRADE', 'HIGHEST', 'LATEST', 'AVERAGE'])
+  gradingMethod: 'HIGHEST_GRADE' | 'LATEST_GRADE' | 'AVERAGE_GRADE' | 'HIGHEST' | 'LATEST' | 'AVERAGE';
+  @IsNotEmpty() @IsString() sessionId: string;
+  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateQuestionDto) questions: CreateQuestionDto[];
 }
 
 export class QuizAnswerDto {
