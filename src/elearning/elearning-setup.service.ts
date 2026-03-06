@@ -68,6 +68,20 @@ export class ElearningSetupService {
     return !!viaMergedClass;
   }
 
+  private async createDefaultSessions(
+    tx: Prisma.TransactionClient,
+    kelasPerkuliahanId: number,
+  ): Promise<number> {
+    const sessionsData = Array.from({ length: 16 }, (_, i) => ({
+      title: `Pertemuan ${i + 1}`,
+      weekNumber: i + 1,
+      kelasPerkuliahanId,
+    }));
+
+    await tx.session.createMany({ data: sessionsData });
+    return 16;
+  }
+
   private async cloneElearningContent(
     tx: Prisma.TransactionClient,
     sourceKelasPerkuliahanId: number,
@@ -199,6 +213,7 @@ export class ElearningSetupService {
       });
 
       let clonedSessionCount = 0;
+      let defaultSessionCount = 0;
       const shouldClone =
         dto.setupMode === ElearningSetupModeDto.EXISTING &&
         !isMergedClass &&
@@ -217,12 +232,22 @@ export class ElearningSetupService {
           dto.kelasPerkuliahanId,
           cloneContentAsHidden,
         );
+      } else if (
+        dto.setupMode === ElearningSetupModeDto.NEW &&
+        !isMergedClass &&
+        existingTargetSessionCount === 0
+      ) {
+        defaultSessionCount = await this.createDefaultSessions(
+          tx,
+          dto.kelasPerkuliahanId,
+        );
       }
 
       return {
         message: 'Pengaturan e-learning kelas berhasil disimpan',
         config,
         clonedSessionCount,
+        defaultSessionCount,
       };
     });
   }
@@ -352,6 +377,43 @@ export class ElearningSetupService {
         isMergedClass: false,
         createdByDosenId: user.id,
       },
+    });
+  }
+
+  async initDefaultSessions(
+    kelasPerkuliahanId: number,
+    user: { id: number; role: Role },
+  ) {
+    if (user.role !== Role.DOSEN) {
+      throw new ForbiddenException(
+        'Hanya dosen yang dapat menginisialisasi sesi pertemuan',
+      );
+    }
+
+    await this.validateLecturerClassOwnership(kelasPerkuliahanId, user.id);
+
+    const existingCount = await this.prisma.session.count({
+      where: { kelasPerkuliahanId },
+    });
+
+    if (existingCount > 0) {
+      throw new BadRequestException(
+        `Kelas sudah memiliki ${existingCount} sesi. Hapus sesi terlebih dahulu untuk reinisialisasi.`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const count = await this.createDefaultSessions(tx, kelasPerkuliahanId);
+      const sessions = await tx.session.findMany({
+        where: { kelasPerkuliahanId },
+        orderBy: { weekNumber: 'asc' },
+        select: { id: true, title: true, weekNumber: true },
+      });
+      return {
+        message: `${count} sesi pertemuan berhasil dibuat`,
+        sessionCount: count,
+        sessions,
+      };
     });
   }
 

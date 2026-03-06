@@ -644,230 +644,229 @@ async function main() {
     },
   });
 
+  // AlgoA: kelas milik dosenKolab1, elearning mandiri (NEW) — diikuti Dani
+  await prisma.elearningClassConfig.upsert({
+    where: { kelasPerkuliahanId: kelasAlgoA.id },
+    update: {
+      setupMode: ElearningSetupMode.NEW,
+      sourceKelasPerkuliahanId: null,
+      isMergedClass: false,
+      createdByDosenId: dosenKolab1.id,
+    },
+    create: {
+      kelasPerkuliahanId: kelasAlgoA.id,
+      setupMode: ElearningSetupMode.NEW,
+      isMergedClass: false,
+      createdByDosenId: dosenKolab1.id,
+    },
+  });
+
   // ==========================================
   // 6. E-LEARNING CONTENT
   // ==========================================
-  
-  const session1 = await prisma.session.create({
-    data: {
-      title: 'Pertemuan 1: Pengenalan HTML & CSS',
-      description: 'Materi dasar struktur web.',
-      weekNumber: 1,
-      kelasPerkuliahanId: kelasWebA.id,
-      materials: {
-        create: [
-          {
-            title: 'Slide Pengenalan Web',
-            type: MaterialType.FILE,
-            fileUrl: 'https://example.com/slide.pdf',
-            isHidden: false,
-          },
-          {
-            title: 'Draft Materi Khusus Lanjutan',
-            type: MaterialType.TEXT,
-            content: 'Materi ini masih disembunyikan untuk mahasiswa',
-            isHidden: true,
-          }
-        ]
-      },
-      assignments: {
-        create: [
-          {
-            title: 'Tugas 1: Buat Profil Biodata',
-            description: 'Gunakan HTML dan CSS murni.',
-            deadline: new Date(new Date().setDate(new Date().getDate() + 7)),
-            allowLate: true,
-            isHidden: false,
-          },
-          {
-            title: 'Tugas 2: Mini Landing Page',
-            description: 'Masih disiapkan, belum ditampilkan',
-            deadline: new Date(new Date().setDate(new Date().getDate() + 10)),
-            allowLate: false,
-            isHidden: true,
-          }
-        ]
-      }
+
+  // Helper: buat 16 sesi kosong default untuk 1 kelas
+  const createDefaultSessions = async (kelasPerkuliahanId: number) => {
+    const sessions: { id: string; weekNumber: number }[] = [];
+    for (let i = 1; i <= 16; i++) {
+      const s = await prisma.session.create({
+        data: { title: `Pertemuan ${i}`, weekNumber: i, kelasPerkuliahanId },
+        select: { id: true, weekNumber: true },
+      });
+      sessions.push(s);
     }
+    return sessions;
+  };
+
+  // --- KELAS WEB A (NEW, master — milik dosen) ---
+  // 16 sesi; konten aktif di sesi 1 (materi+tugas) dan sesi 2 (quiz)
+  const webASessions = await createDefaultSessions(kelasWebA.id);
+
+  await prisma.material.createMany({
+    data: [
+      {
+        title: 'Slide Pengenalan Web',
+        type: MaterialType.FILE,
+        fileUrl: 'https://example.com/slide.pdf',
+        isHidden: false,
+        sessionId: webASessions[0].id,
+      },
+      {
+        title: 'Draft Materi Khusus Lanjutan',
+        type: MaterialType.TEXT,
+        content: 'Materi ini masih disembunyikan untuk mahasiswa',
+        isHidden: true,
+        sessionId: webASessions[0].id,
+      },
+    ],
   });
 
-  const assignment1 = await prisma.assignment.findFirst({ where: { sessionId: session1.id } });
-  if (assignment1) {
-    await prisma.submission.create({
-      data: {
-        studentId: budiActive.id,
-        assignmentId: assignment1.id,
-        textContent: 'Ini tugas saya pak, link repository: github.com/budi/tugas1',
-        grade: 90 
-      }
-    });
-  }
-
-  const session2 = await prisma.session.create({
+  const assignment1 = await prisma.assignment.create({
     data: {
-      title: 'Pertemuan 2: Kuis Dasar HTML',
-      weekNumber: 2,
-      kelasPerkuliahanId: kelasWebA.id,
-      quizzes: {
-        create: [
-          {
-            title: 'Quiz 1: HTML Tag Basics',
-            duration: 30,
-            startTime: new Date(new Date().setDate(new Date().getDate() - 1)),
-            endTime: new Date(new Date().setDate(new Date().getDate() + 3)),
-            gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
-            isHidden: false,
-            questions: {
-              create: [
-                {
-                  text: 'Apa tag untuk membuat hyperlink?',
-                  type: QuestionType.MULTIPLE_CHOICE,
-                  options: ['<a>', '<link>', '<href>', '<p>'],
-                  correctAnswer: '<a>',
-                  points: 100
-                }
-              ]
-            }
-          },
-          {
-            title: 'Quiz 2: CSS Draft Quiz',
-            duration: 20,
-            startTime: new Date(new Date().setDate(new Date().getDate() + 1)),
-            endTime: new Date(new Date().setDate(new Date().getDate() + 4)),
-            gradingMethod: QuizGradingMethod.LATEST_GRADE,
-            isHidden: true,
-            questions: {
-              create: [
-                {
-                  text: 'Properti CSS untuk warna teks?',
-                  type: QuestionType.MULTIPLE_CHOICE,
-                  options: ['font-color', 'color', 'text-color', 'fgcolor'],
-                  correctAnswer: 'color',
-                  points: 100,
-                }
-              ]
-            }
-          }
-        ]
-      }
-    }
+      title: 'Tugas 1: Buat Profil Biodata',
+      description: 'Gunakan HTML dan CSS murni.',
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      allowLate: true,
+      isHidden: false,
+      sessionId: webASessions[0].id,
+    },
   });
 
-  await prisma.session.create({
+  await prisma.assignment.create({
     data: {
-      title: 'Pertemuan Clone: Materi dari Kelas Lama',
-      description: 'Simulasi hasil clone mode EXISTING non-merged',
-      weekNumber: 1,
-      kelasPerkuliahanId: kelasWebD.id,
-      materials: {
+      title: 'Tugas 2: Mini Landing Page',
+      description: 'Masih disiapkan, belum ditampilkan ke mahasiswa',
+      deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      allowLate: false,
+      isHidden: true,
+      sessionId: webASessions[0].id,
+    },
+  });
+
+  // Budi (enrolled via WebB yang merged ke WebA) mengumpulkan Tugas 1
+  await prisma.submission.create({
+    data: {
+      studentId: budiActive.id,
+      assignmentId: assignment1.id,
+      textContent: 'Ini tugas saya pak, link repository: github.com/budi/tugas1',
+      grade: 90,
+    },
+  });
+
+  const quiz1 = await prisma.quiz.create({
+    data: {
+      title: 'Quiz 1: HTML Tag Basics',
+      duration: 30,
+      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
+      isHidden: false,
+      sessionId: webASessions[1].id,
+      questions: {
         create: [
           {
-            title: 'Clone Materi Hidden',
-            type: MaterialType.FILE,
-            fileUrl: 'https://example.com/clone-hidden.pdf',
-            isHidden: true,
+            text: 'Apa tag untuk membuat hyperlink?',
+            type: QuestionType.MULTIPLE_CHOICE,
+            options: ['<a>', '<link>', '<href>', '<p>'],
+            correctAnswer: '<a>',
+            points: 100,
           },
         ],
       },
     },
   });
 
-  // --- KONTEN ELEARNING UNTUK ALGO B (MASTER MERGE SAME DOSEN) ---
-  // AlgoC tidak punya sesi sendiri; ia membaca dari AlgoB via isMergedClass=true.
-  const sessionAlgoB1 = await prisma.session.create({
+  await prisma.quiz.create({
     data: {
-      title: 'Pertemuan 1: Kompleksitas Algoritma',
-      description: 'Memahami Big O Notation dan analisis waktu algoritma.',
-      weekNumber: 1,
-      kelasPerkuliahanId: kelasAlgoB.id,
-      materials: {
+      title: 'Quiz 2: CSS Draft Quiz',
+      duration: 20,
+      startTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
+      gradingMethod: QuizGradingMethod.LATEST_GRADE,
+      isHidden: true,
+      sessionId: webASessions[1].id,
+      questions: {
         create: [
           {
-            title: 'Slide Big O Notation',
-            type: MaterialType.FILE,
-            fileUrl: 'https://example.com/big-o.pdf',
-            isHidden: false,
-          },
-          {
-            title: 'Catatan Dosen: Contoh Kode Tambahan',
-            type: MaterialType.TEXT,
-            content: 'Materi suplemen ini disembunyikan sementara sebelum kelas.',
-            isHidden: true,
-          },
-        ],
-      },
-      assignments: {
-        create: [
-          {
-            title: 'Tugas 1: Analisis Kompleksitas Sorting',
-            description: 'Tentukan kompleksitas waktu untuk 3 algoritma sorting berbeda.',
-            deadline: new Date(new Date().setDate(new Date().getDate() + 7)),
-            allowLate: false,
-            isHidden: false,
+            text: 'Properti CSS untuk warna teks?',
+            type: QuestionType.MULTIPLE_CHOICE,
+            options: ['font-color', 'color', 'text-color', 'fgcolor'],
+            correctAnswer: 'color',
+            points: 100,
           },
         ],
       },
     },
   });
 
-  await prisma.session.create({
+  // Budi mengerjakan Quiz 1
+  await prisma.quizAttempt.create({
     data: {
-      title: 'Pertemuan 2: Struktur Data Linear',
-      description: 'Stack, Queue, dan Linked List.',
-      weekNumber: 2,
-      kelasPerkuliahanId: kelasAlgoB.id,
-      quizzes: {
+      studentId: budiActive.id,
+      quizId: quiz1.id,
+      score: 100,
+      finishedAt: new Date(),
+    },
+  });
+
+  // --- KELAS WEB C (NEW, independen — milik dosenKolab2) ---
+  // 16 sesi kosong; dosen mengisi materi sendiri
+  await createDefaultSessions(kelasWebC.id);
+
+  // Catatan: Kelas WEB D (EXISTING non-merged, clone dari WebA) TIDAK dibuat manual.
+  // 16 sesinya akan di-clone dari WebA oleh blok EXTRA di bawah (isHidden=true).
+
+  // --- KELAS ALGO B (NEW, master merge — milik dosen) ---
+  // AlgoC tidak punya sesi sendiri; membaca dari AlgoB via isMergedClass=true
+  // 16 sesi; konten aktif di sesi 1 (materi+tugas) dan sesi 2 (quiz)
+  const algoBSessions = await createDefaultSessions(kelasAlgoB.id);
+
+  await prisma.material.createMany({
+    data: [
+      {
+        title: 'Slide Big O Notation',
+        type: MaterialType.FILE,
+        fileUrl: 'https://example.com/big-o.pdf',
+        isHidden: false,
+        sessionId: algoBSessions[0].id,
+      },
+      {
+        title: 'Catatan Dosen: Contoh Kode Tambahan',
+        type: MaterialType.TEXT,
+        content: 'Materi suplemen ini disembunyikan sementara sebelum kelas.',
+        isHidden: true,
+        sessionId: algoBSessions[0].id,
+      },
+    ],
+  });
+
+  const assignmentAlgoB1 = await prisma.assignment.create({
+    data: {
+      title: 'Tugas 1: Analisis Kompleksitas Sorting',
+      description: 'Tentukan kompleksitas waktu untuk 3 algoritma sorting berbeda.',
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      allowLate: false,
+      isHidden: false,
+      sessionId: algoBSessions[0].id,
+    },
+  });
+
+  // Citra (enrolled via AlgoC yang merged ke AlgoB) mengumpulkan tugas
+  await prisma.submission.create({
+    data: {
+      studentId: citraAlgo.id,
+      assignmentId: assignmentAlgoB1.id,
+      textContent: 'Bubble Sort: O(n²), Merge Sort: O(n log n), Binary Search: O(log n)',
+      grade: 85,
+    },
+  });
+
+  await prisma.quiz.create({
+    data: {
+      title: 'Quiz 1: Stack & Queue Basics',
+      duration: 20,
+      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
+      isHidden: false,
+      sessionId: algoBSessions[1].id,
+      questions: {
         create: [
           {
-            title: 'Quiz 1: Stack & Queue Basics',
-            duration: 20,
-            startTime: new Date(new Date().setDate(new Date().getDate() - 1)),
-            endTime: new Date(new Date().setDate(new Date().getDate() + 5)),
-            gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
-            isHidden: false,
-            questions: {
-              create: [
-                {
-                  text: 'Struktur data yang menggunakan prinsip LIFO adalah?',
-                  type: QuestionType.MULTIPLE_CHOICE,
-                  options: ['Queue', 'Stack', 'Linked List', 'Tree'],
-                  correctAnswer: 'Stack',
-                  points: 100,
-                },
-              ],
-            },
+            text: 'Struktur data yang menggunakan prinsip LIFO adalah?',
+            type: QuestionType.MULTIPLE_CHOICE,
+            options: ['Queue', 'Stack', 'Linked List', 'Tree'],
+            correctAnswer: 'Stack',
+            points: 100,
           },
         ],
       },
     },
   });
 
-  // Simulasi pengumpulan tugas oleh Citra (mahasiswa AlgoC yang merged ke AlgoB)
-  const assignmentAlgoB1 = await prisma.assignment.findFirst({
-    where: { sessionId: sessionAlgoB1.id },
-  });
-  if (assignmentAlgoB1) {
-    await prisma.submission.create({
-      data: {
-        studentId: citraAlgo.id,
-        assignmentId: assignmentAlgoB1.id,
-        textContent: 'Bubble Sort: O(n²), Merge Sort: O(n log n), Binary Search: O(log n)',
-        grade: 85,
-      },
-    });
-  }
-
-  const quiz1 = await prisma.quiz.findFirst({ where: { sessionId: session2.id } });
-  if (quiz1) {
-    await prisma.quizAttempt.create({
-      data: {
-        studentId: budiActive.id,
-        quizId: quiz1.id,
-        score: 100, 
-        finishedAt: new Date()
-      }
-    });
-  }
+  // --- KELAS ALGO A (NEW, independen — milik dosenKolab1, diikuti Dani) ---
+  // 16 sesi kosong; dosen mengisi materi sendiri
+  await createDefaultSessions(kelasAlgoA.id);
 
   // ==========================================
   // ASSIGN DOSEN PEMBIMBING AKADEMIK (PA)

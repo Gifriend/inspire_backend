@@ -59,4 +59,14 @@ export class ElearningSetupController {
   async getClassSetup(@Param('kelasId', ParseIntPipe) kelasId: number, @Req() req) {
     return this.elearningSetupService.getClassSetup(kelasId, req.user);
   }
+
+  // POST /elearning/setup/init-sessions/:kelasId
+  // Manually initialize 16 default sessions for an already-configured class
+  @Post('init-sessions/:kelasId')
+  async initDefaultSessions(
+    @Param('kelasId', ParseIntPipe) kelasId: number,
+    @Req() req,
+  ) {
+    return this.elearningSetupService.initDefaultSessions(kelasId, req.user);
+  }
 }

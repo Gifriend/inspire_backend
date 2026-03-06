@@ -14,12 +14,41 @@ import {
   CreateQuizDto,
   SubmitQuizDto,
 } from './dto/elearning.dto';
-import { Role, User } from '@prisma/client';
+import { ElearningSetupMode, Role, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class ElearningService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * Jika kelas sudah punya ElearningClassConfig mode NEW (bukan merged)
+   * tapi belum punya sesi, buat 16 sesi default secara otomatis.
+   */
+  private async ensureDefaultSessions(kelasPerkuliahanId: number): Promise<void> {
+    const config = await this.prisma.elearningClassConfig.findUnique({
+      where: { kelasPerkuliahanId },
+      select: { isMergedClass: true, setupMode: true },
+    });
+
+    if (!config || config.isMergedClass || config.setupMode !== ElearningSetupMode.NEW) {
+      return;
+    }
+
+    const count = await this.prisma.session.count({
+      where: { kelasPerkuliahanId },
+    });
+
+    if (count > 0) return;
+
+    await this.prisma.session.createMany({
+      data: Array.from({ length: 16 }, (_, i) => ({
+        title: `Pertemuan ${i + 1}`,
+        weekNumber: i + 1,
+        kelasPerkuliahanId,
+      })),
+    });
+  }
 
   private async resolveEffectiveKelasId(kelasPerkuliahanId: number) {
     const config = await this.prisma.elearningClassConfig.findUnique({
@@ -225,6 +254,7 @@ export class ElearningService {
   // 7. Get Course Content (For E-learning Page)
   async getCourseContent(kelasPerkuliahanId: number) {
     const effectiveKelasId = await this.resolveEffectiveKelasId(kelasPerkuliahanId);
+    await this.ensureDefaultSessions(effectiveKelasId);
 
     return this.prisma.session.findMany({
       where: { kelasPerkuliahanId: effectiveKelasId },
@@ -246,6 +276,7 @@ export class ElearningService {
   // 7b. Get Course Detail (Complete Course Information)
   async getCourseDetail(kelasPerkuliahanId: number) {
     const effectiveKelasId = await this.resolveEffectiveKelasId(kelasPerkuliahanId);
+    await this.ensureDefaultSessions(effectiveKelasId);
 
     const kelas = await this.prisma.kelasPerkuliahan.findUnique({
       where: { id: effectiveKelasId },
