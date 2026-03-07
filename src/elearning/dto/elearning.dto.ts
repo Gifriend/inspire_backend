@@ -1,8 +1,9 @@
 import { Type } from "class-transformer";
 import {
   IsString, IsArray, ValidateNested, IsNotEmpty, Min, IsInt, IsIn,
-  IsOptional, IsEnum, IsNumber, IsPositive, IsDateString,
+  IsOptional, IsEnum, IsNumber, IsPositive, IsDateString, Max,
 } from "class-validator";
+import { TaskKategori } from '@prisma/client';
 
 export class CreateSessionDto {
   @IsNotEmpty() @IsString() title: string;
@@ -24,6 +25,8 @@ export class CreateAssignmentDto {
   @IsOptional() @IsString() description?: string;
   @IsNotEmpty() @IsDateString() deadline: string;
   @IsNotEmpty() @IsString() sessionId: string;
+  @IsOptional() @IsEnum(TaskKategori) kategori?: TaskKategori;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) bobot?: number;
 }
 
 export class SubmitAssignmentDto {
@@ -52,6 +55,8 @@ export class CreateQuizDto {
   gradingMethod: 'HIGHEST_GRADE' | 'LATEST_GRADE' | 'AVERAGE_GRADE' | 'HIGHEST' | 'LATEST' | 'AVERAGE';
   @IsNotEmpty() @IsString() sessionId: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => CreateQuestionDto) questions: CreateQuestionDto[];
+  @IsOptional() @IsEnum(TaskKategori) kategori?: TaskKategori;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) bobot?: number;
 }
 
 export class QuizAnswerDto {

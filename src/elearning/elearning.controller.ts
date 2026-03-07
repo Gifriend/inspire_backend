@@ -149,9 +149,53 @@ async getSubmissionDetail(@Param('id') submissionId: string) {
   return this.elearningService.getSubmissionDetail(submissionId);
 }
 
+// GET: /elearning/kelas/:kelasId/participation
+// Daftar lengkap partisipasi mahasiswa per tugas & kuis di suatu kelas
+@UseGuards(JwtAuthGuard)
+@Get('kelas/:kelasId/participation')
+async getParticipation(
+  @Param('kelasId', ParseIntPipe) kelasId: number,
+  @Req() req,
+) {
+  return this.elearningService.getParticipation(kelasId, req.user.id);
+}
+
+// GET: /elearning/kelas/:kelasId/ranking
+// Peringkat mahasiswa berdasarkan total nilai tertimbang (bobot)
+@UseGuards(JwtAuthGuard)
+@Get('kelas/:kelasId/ranking')
+async getRanking(
+  @Param('kelasId', ParseIntPipe) kelasId: number,
+  @Req() req,
+) {
+  return this.elearningService.getRanking(kelasId, req.user.id);
+}
+
 @UseGuards(JwtAuthGuard)
 @Get('lecturer/courses')
 async getLecturerCourses(@Req() req) {
   return this.elearningService.getLecturerCourses(req.user.id);
+}
+
+// GET: /elearning/kelas/:kelasId/participants
+// Daftar peserta yang terdaftar di kelas (untuk mahasiswa yang terdaftar)
+@UseGuards(JwtAuthGuard)
+@Get('kelas/:kelasId/participants')
+async getStudentParticipants(
+  @Param('kelasId', ParseIntPipe) kelasId: number,
+  @Req() req,
+) {
+  return this.elearningService.getStudentParticipants(kelasId, req.user.id);
+}
+
+// GET: /elearning/kelas/:kelasId/my-grades
+// Nilai, kontribusi bobot, dan peringkat mahasiswa sendiri dalam kelas
+@UseGuards(JwtAuthGuard)
+@Get('kelas/:kelasId/my-grades')
+async getMyGrades(
+  @Param('kelasId', ParseIntPipe) kelasId: number,
+  @Req() req,
+) {
+  return this.elearningService.getMyGrades(kelasId, req.user.id);
 }
 }

@@ -437,13 +437,15 @@ enum MaterialType {
 }
 
 model Assignment {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   title       String
   description String?
   fileUrl     String?
   deadline    DateTime
-  allowLate   Boolean  @default(false)
-  isHidden    Boolean  @default(false)
+  allowLate   Boolean      @default(false)
+  isHidden    Boolean      @default(false)
+  kategori    TaskKategori @default(TUGAS)
+  bobot       Float        @default(0)
   sessionId   String
 
   session     Session      @relation(fields: [sessionId], references: [id])
@@ -475,6 +477,8 @@ model Quiz {
   endTime       DateTime
   gradingMethod QuizGradingMethod @default(HIGHEST_GRADE)
   isHidden      Boolean           @default(false)
+  kategori      TaskKategori      @default(KUIS)
+  bobot         Float             @default(0)
   sessionId     String
 
   session   Session       @relation(fields: [sessionId], references: [id])
@@ -488,6 +492,14 @@ enum QuizGradingMethod {
   HIGHEST_GRADE
   LATEST_GRADE
   AVERAGE_GRADE
+}
+
+enum TaskKategori {
+  TUGAS
+  UTS
+  UAS
+  KUIS
+  PARTISIPASI
 }
 
 enum ElearningSetupMode {
