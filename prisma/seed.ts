@@ -1,13 +1,32 @@
 import 'dotenv/config';
 import { 
   PrismaClient, Role, Gender, Status, StatusKRS, ElearningSetupMode,
-  MaterialType, QuestionType, QuizGradingMethod
+  MaterialType, QuestionType, QuizGradingMethod, TaskKategori
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+// ============================================================
+// SEED PURPOSE:
+//   This seed creates a complete, repeatable test dataset that
+//   covers every major feature flow in the application:
+//
+//   1. KRS (Study Plan): DRAFT → DIAJUKAN → DISETUJUI / DITOLAK
+//   2. Nilai (Grading): historical KHS + transkrip for a senior student
+//   3. E-Learning: NEW / EXISTING / merged (same-dosen & cross-dosen)
+//   4. E-Learning Content: materials, assignments (with bobot/kategori),
+//      quizzes (with bobot/kategori), student submissions & quiz attempts
+//   5. Participation: populated so /kelas/:id/participation returns data
+//   6. My-Grades / Ranking: populated so /kelas/:id/my-grades & ranking work
+//   7. Grade Submission: one graded + one ungraded submission for testing
+//      PATCH /elearning/submission/:id/grade
+//   8. Presensi (Attendance): open session with token + student records
+//   9. Pengumuman (Announcements): global + class-specific
+//  10. Dosen PA (Academic Advisor): all students assigned to one advisor
+// ============================================================
 
 async function main() { 
   console.log('🌱 Starting database seed...');
@@ -16,9 +35,12 @@ async function main() {
   const activeAcademicYear = `${currentYear - 1}/${currentYear} Genap`;
 
   // ==========================================
-  // 0. CLEANUP 
+  // 0. CLEANUP — safe to re-run any time
   // ==========================================
   console.log('🧹 Cleaning up old transactional data...');
+  await prisma.presensiRecord.deleteMany({});
+  await prisma.presensiSession.deleteMany({});
+  await prisma.pengumuman.deleteMany({});
   await prisma.quizAttempt.deleteMany({});
   await prisma.submission.deleteMany({});
   await prisma.question.deleteMany({});
@@ -44,10 +66,14 @@ async function main() {
   });
 
   // ==========================================
-  // 2. USERS
+  // 2. USERS — all passwords are "123456"
   // ==========================================
   const password = await bcrypt.hash('123456', 10);
 
+  // This is the main lecturer (PA/advisor for all students).
+  // Teaches: Web A, Web D, Algo B (master), Algo C (member/merged).
+  // Use to: approve/reject KRS, grade submissions, manage e-learning content,
+  //         view participation, view ranking, manage presensi.
   const dosen = await prisma.user.upsert({
     where: { email: 'dosen@univ.ac.id' }, update: { password },
     create: {
@@ -57,6 +83,8 @@ async function main() {
     },
   });
 
+  // This is the second collaborating lecturer.
+  // Teaches: Web B (merged to Web A as cross-dosen), Algo A (independent).
   const dosenKolab1 = await prisma.user.upsert({
     where: { email: 'dosen.kolab1@univ.ac.id' }, update: { password },
     create: {
@@ -66,6 +94,8 @@ async function main() {
     },
   });
 
+  // This is the third collaborating lecturer.
+  // Teaches: Web C (independent NEW setup, no merge).
   const dosenKolab2 = await prisma.user.upsert({
     where: { email: 'dosen.kolab2@univ.ac.id' }, update: { password },
     create: {
@@ -75,6 +105,8 @@ async function main() {
     },
   });
 
+  // This is the study program coordinator (Koorprodi).
+  // Use to: approve/reject KRS (same capability as dosen in this system).
   const koorprodi = await prisma.user.upsert({
     where: { email: 'koor@univ.ac.id' }, update: { password },
     create: {
@@ -84,44 +116,61 @@ async function main() {
     },
   });
 
-  // STUDENT 1: Andi (Flow 1: Blank KRS - Needs to pick subjects)
+  // STUDENT 1 — Andi: fresh student with a DRAFT KRS, no classes connected yet.
+  // Test flow: login → add class to KRS → submit KRS (DIAJUKAN) → dosen approves/rejects.
   const andiBlank = await prisma.user.upsert({
     where: { email: 'andi@univ.ac.id' }, update: { password },
     create: {
-      name: 'Andi (Belum Kontrak)', email: 'andi@univ.ac.id', nim: '20249001', 
+      name: 'Andi Saputra', email: 'andi@univ.ac.id', nim: '20249001', 
       role: Role.MAHASISWA, gender: Gender.LAKI_LAKI, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
   });
 
-  // STUDENT 2: Budi (Flow 2: KRS Approved - Can use E-Learning)
+  // STUDENT 2 — Budi: KRS already APPROVED, enrolled in Web B (cross-dosen merged to Web A).
+  // Test flow: view courses, submit assignment, take quiz, view my-grades,
+  //            view participants, submit presensi via token.
   const budiActive = await prisma.user.upsert({
     where: { email: 'budi@univ.ac.id' }, update: { password },
     create: {
-      name: 'Budi (Active E-Learning)', email: 'budi@univ.ac.id', nim: '20249002',
+      name: 'Budi Santoso', email: 'budi@univ.ac.id', nim: '20249002',
       role: Role.MAHASISWA, gender: Gender.LAKI_LAKI, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
   });
 
-  // STUDENT 3: Citra (Flow 3: Same-Dosen Merge - enrolled in AlgoC merged to AlgoB)
+  // STUDENT 3 — Citra: KRS approved, enrolled in Algo C (same-dosen merged to Algo B).
+  // Test flow: access e-learning content of Algo B through merged Algo C,
+  //            submit assignment, test participation & ranking endpoints.
   const citraAlgo = await prisma.user.upsert({
     where: { email: 'citra@univ.ac.id' }, update: { password },
     create: {
-      name: 'Citra (Merge Same Dosen)', email: 'citra@univ.ac.id', nim: '20240002',
+      name: 'Citra Dewi', email: 'citra@univ.ac.id', nim: '20240002',
       role: Role.MAHASISWA, gender: Gender.PEREMPUAN, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
   });
 
-  // STUDENT 4: Dani (Flow 4: Has KHS & Transkrip - completed past semesters)
+  // STUDENT 4 — Dani: senior student with completed semesters 1 & 2 (KHS + transkrip).
+  // Test flow: GET /academic/pa/mahasiswa/:id/khs, /transkrip, /ringkasan.
   const daniTranskrip = await prisma.user.upsert({
     where: { email: 'dani@univ.ac.id' }, update: { password },
     create: {
-      name: 'Dani (Punya KHS & Transkrip)', email: 'dani@univ.ac.id', nim: '20239001',
+      name: 'Dani Firmansyah', email: 'dani@univ.ac.id', nim: '20239001',
       role: Role.MAHASISWA, gender: Gender.LAKI_LAKI, password,
       status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
-      ipk: 0, totalSksLulus: 0, // will be updated after Nilai seed
+      ipk: 0, totalSksLulus: 0, // will be recalculated below after Nilai seed
+    },
+  });
+
+  // STUDENT 5 — Eva: KRS DITOLAK (rejected), used to test the rejection flow.
+  // Test flow: dosen rejects KRS → student sees DITOLAK + catatanDosen.
+  const evaRejected = await prisma.user.upsert({
+    where: { email: 'eva@univ.ac.id' }, update: { password },
+    create: {
+      name: 'Eva Rahayu', email: 'eva@univ.ac.id', nim: '20249003',
+      role: Role.MAHASISWA, gender: Gender.PEREMPUAN, password,
+      status: Status.AKTIF, fakultasId: ft.id, prodiId: ifProdi.id,
     },
   });
 
@@ -133,7 +182,7 @@ async function main() {
     kurikulum = await prisma.kurikulum.create({ data: { name: 'Kurikulum 2024', tahun: 2024, prodiId: ifProdi.id }});
   }
 
-  // --- Mata Kuliah Semester 1 (untuk histori KHS/Transkrip) ---
+  // --- Courses for semester 1 (historical data for Dani's KHS/Transkrip) ---
   const mkDasarProg = await prisma.matakuliah.upsert({
     where: { kode: 'IF101' }, update: {},
     create: {
@@ -170,7 +219,7 @@ async function main() {
     },
   });
 
-  // --- Mata Kuliah Semester 2 (untuk histori KHS/Transkrip) ---
+  // --- Courses for semester 2 (historical data for Dani's KHS/Transkrip) ---
   const mkOop = await prisma.matakuliah.upsert({
     where: { kode: 'IF106' }, update: {},
     create: {
@@ -207,7 +256,7 @@ async function main() {
     },
   });
 
-  // --- Mata Kuliah Semester 3 (existing + baru) ---
+  // --- Courses for semester 3 (active semester, with e-learning content) ---
   const mkWeb = await prisma.matakuliah.upsert({
     where: { kode: 'IF201' }, update: {},
     create: {
@@ -232,16 +281,15 @@ async function main() {
     },
   });
 
+  // --- Classes ---
+  // Web A: master class for e-learning (NEW). Taught by dosen (main lecturer).
+  // Enrolled by: Andi (after seed flow), Dani.
   const kelasWebA = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'WEB-GENAP-REGULER' },
     update: {
-      nama: 'Pemrograman Web A',
-      kapasitas: 40,
-      ruangan: 'Lab Komputer 1',
-      jadwal: 'Senin 08:00-10:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkWeb.id,
-      dosenId: dosen.id,
+      nama: 'Pemrograman Web A', kapasitas: 40, ruangan: 'Lab Komputer 1',
+      jadwal: 'Senin 08:00-10:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkWeb.id, dosenId: dosen.id,
     },
     create: {
       nama: 'Pemrograman Web A', kode: 'WEB-GENAP-REGULER', kapasitas: 40,
@@ -250,16 +298,14 @@ async function main() {
     }
   });
 
+  // Web B: EXISTING (cross-dosen merge) — points to Web A as source.
+  // Enrolled by: Budi. isMergedClass=true means it reads content from Web A.
   const kelasWebB = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'WEB-GENAP-KOLAB-B' },
     update: {
-      nama: 'Pemrograman Web B',
-      kapasitas: 35,
-      ruangan: 'Lab Komputer 2',
-      jadwal: 'Selasa 10:00-12:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkWeb.id,
-      dosenId: dosenKolab1.id,
+      nama: 'Pemrograman Web B', kapasitas: 35, ruangan: 'Lab Komputer 2',
+      jadwal: 'Selasa 10:00-12:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkWeb.id, dosenId: dosenKolab1.id,
     },
     create: {
       nama: 'Pemrograman Web B', kode: 'WEB-GENAP-KOLAB-B', kapasitas: 35,
@@ -268,16 +314,14 @@ async function main() {
     }
   });
 
+  // Web C: independent NEW setup. Taught by dosenKolab2. No students enrolled.
+  // Used to test: independent e-learning creation, no merge.
   const kelasWebC = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'WEB-GENAP-KOLAB-C' },
     update: {
-      nama: 'Pemrograman Web C',
-      kapasitas: 30,
-      ruangan: 'Lab Komputer 3',
-      jadwal: 'Rabu 13:00-15:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkWeb.id,
-      dosenId: dosenKolab2.id,
+      nama: 'Pemrograman Web C', kapasitas: 30, ruangan: 'Lab Komputer 3',
+      jadwal: 'Rabu 13:00-15:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkWeb.id, dosenId: dosenKolab2.id,
     },
     create: {
       nama: 'Pemrograman Web C', kode: 'WEB-GENAP-KOLAB-C', kapasitas: 30,
@@ -286,16 +330,14 @@ async function main() {
     }
   });
 
+  // Web D: EXISTING non-merged clone from Web A (content hidden by default).
+  // Used to test: clone mode (isMergedClass=false, setupMode=EXISTING).
   const kelasWebD = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'WEB-GENAP-CLONE-D' },
     update: {
-      nama: 'Pemrograman Web D',
-      kapasitas: 25,
-      ruangan: 'Lab Komputer 4',
-      jadwal: 'Kamis 08:00-10:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkWeb.id,
-      dosenId: dosen.id,
+      nama: 'Pemrograman Web D', kapasitas: 25, ruangan: 'Lab Komputer 4',
+      jadwal: 'Kamis 08:00-10:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkWeb.id, dosenId: dosen.id,
     },
     create: {
       nama: 'Pemrograman Web D', kode: 'WEB-GENAP-CLONE-D', kapasitas: 25,
@@ -304,16 +346,13 @@ async function main() {
     }
   });
 
+  // Algo A: independent NEW setup. Taught by dosenKolab1. Enrolled by Dani.
   const kelasAlgoA = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'ALGO-GENAP-A' },
     update: {
-      nama: 'Algoritma A',
-      kapasitas: 40,
-      ruangan: 'Ruang 201',
-      jadwal: 'Jumat 09:00-11:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkAlgo.id,
-      dosenId: dosenKolab1.id,
+      nama: 'Algoritma A', kapasitas: 40, ruangan: 'Ruang 201',
+      jadwal: 'Jumat 09:00-11:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkAlgo.id, dosenId: dosenKolab1.id,
     },
     create: {
       nama: 'Algoritma A', kode: 'ALGO-GENAP-A', kapasitas: 40,
@@ -322,20 +361,14 @@ async function main() {
     }
   });
 
-  // --- SKENARIO MERGER DOSEN PENGAMPUH SAMA ---
-  // Dosen 1 (dosen@univ.ac.id) mengajar 2 kelas Algoritma yang berbeda.
-  // AlgoB = kelas master (elearning NEW, punya konten).
-  // AlgoC = kelas member yang di-merge ke AlgoB (EXISTING + isMergedClass=true).
+  // Algo B: MASTER class for same-dosen merge scenario. Taught by dosen.
+  // setupMode=NEW. AlgoC is the member that merges into this.
   const kelasAlgoB = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'ALGO-GENAP-B-MASTER' },
     update: {
-      nama: 'Algoritma B (Master Merge)',
-      kapasitas: 35,
-      ruangan: 'Ruang 202',
-      jadwal: 'Senin 13:00-15:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkAlgo.id,
-      dosenId: dosen.id,
+      nama: 'Algoritma B (Master Merge)', kapasitas: 35, ruangan: 'Ruang 202',
+      jadwal: 'Senin 13:00-15:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkAlgo.id, dosenId: dosen.id,
     },
     create: {
       nama: 'Algoritma B (Master Merge)', kode: 'ALGO-GENAP-B-MASTER', kapasitas: 35,
@@ -344,16 +377,15 @@ async function main() {
     },
   });
 
+  // Algo C: MEMBER class merged to Algo B (same lecturer, different class).
+  // setupMode=EXISTING, isMergedClass=true, source=AlgoB. Enrolled by Citra.
+  // Citra access Algo B content transparently through this merge.
   const kelasAlgoC = await prisma.kelasPerkuliahan.upsert({
     where: { kode: 'ALGO-GENAP-C-MEMBER' },
     update: {
-      nama: 'Algoritma C (Member Merge)',
-      kapasitas: 30,
-      ruangan: 'Ruang 203',
-      jadwal: 'Rabu 08:00-10:00',
-      academicYear: activeAcademicYear,
-      mataKuliahId: mkAlgo.id,
-      dosenId: dosen.id,
+      nama: 'Algoritma C (Member Merge)', kapasitas: 30, ruangan: 'Ruang 203',
+      jadwal: 'Rabu 08:00-10:00', academicYear: activeAcademicYear,
+      mataKuliahId: mkAlgo.id, dosenId: dosen.id,
     },
     create: {
       nama: 'Algoritma C (Member Merge)', kode: 'ALGO-GENAP-C-MEMBER', kapasitas: 30,
@@ -365,8 +397,9 @@ async function main() {
   // ==========================================
   // 4. KRS FLOW SCENARIOS
   // ==========================================
-  
-  // Andi's KRS -> DRAFT (Empty, 0 SKS, no subjects connected)
+
+  // Andi's KRS → DRAFT (empty, 0 SKS — student hasn't picked classes yet).
+  // Test flow: POST /krs/add-class + POST /krs/submit → dosen PATCH /krs/:id/approve
   await prisma.kRS.upsert({
     where: {
       mahasiswaId_academicYear: {
@@ -375,22 +408,19 @@ async function main() {
       },
     },
     update: {
-      status: StatusKRS.DRAFT,
-      totalSKS: 0,
+      status: StatusKRS.DRAFT, totalSKS: 0,
       kelasPerkuliahan: { set: [] },
-      tanggalPengajuan: null,
-      tanggalPersetujuan: null,
-      catatanDosen: null,
+      tanggalPengajuan: null, tanggalPersetujuan: null, catatanDosen: null,
     },
     create: {
-      mahasiswaId: andiBlank.id,
-      academicYear: activeAcademicYear,
-      status: StatusKRS.DRAFT,
-      totalSKS: 0,
+      mahasiswaId: andiBlank.id, academicYear: activeAcademicYear,
+      status: StatusKRS.DRAFT, totalSKS: 0,
     },
   });
 
-  // Budi's KRS -> DISETUJUI (Contracted, mapped to e-learning)
+  // Budi's KRS → DISETUJUI (approved, enrolled in Web B).
+  // Test flow: access e-learning via GET /elearning/courses,
+  //            submit assignment, take quiz, view my-grades, presensi.
   await prisma.kRS.upsert({
     where: {
       mahasiswaId_academicYear: {
@@ -399,22 +429,20 @@ async function main() {
       },
     },
     update: {
-      status: StatusKRS.DISETUJUI,
-      totalSKS: 3,
+      status: StatusKRS.DISETUJUI, totalSKS: 3,
       kelasPerkuliahan: { set: [{ id: kelasWebB.id }] },
       tanggalPersetujuan: new Date(),
     },
     create: {
-      mahasiswaId: budiActive.id,
-      academicYear: activeAcademicYear,
-      status: StatusKRS.DISETUJUI,
-      totalSKS: 3,
+      mahasiswaId: budiActive.id, academicYear: activeAcademicYear,
+      status: StatusKRS.DISETUJUI, totalSKS: 3,
       tanggalPersetujuan: new Date(),
       kelasPerkuliahan: { connect: [{ id: kelasWebB.id }] },
     },
   });
 
-  // Citra's KRS -> DISETUJUI (Enrolled in AlgoC which is MERGED to AlgoB by same dosen)
+  // Citra's KRS → DISETUJUI (enrolled in Algo C, which merges into Algo B).
+  // Test flow: student accesses content from merged master class (Algo B).
   await prisma.kRS.upsert({
     where: {
       mahasiswaId_academicYear: {
@@ -423,32 +451,56 @@ async function main() {
       },
     },
     update: {
-      status: StatusKRS.DISETUJUI,
-      totalSKS: 3,
+      status: StatusKRS.DISETUJUI, totalSKS: 3,
       kelasPerkuliahan: { set: [{ id: kelasAlgoC.id }] },
       tanggalPersetujuan: new Date(),
     },
     create: {
-      mahasiswaId: citraAlgo.id,
-      academicYear: activeAcademicYear,
-      status: StatusKRS.DISETUJUI,
-      totalSKS: 3,
-      tanggalPersetujuan: new Date(),
+      mahasiswaId: citraAlgo.id, academicYear: activeAcademicYear,
+      status: StatusKRS.DISETUJUI, totalSKS: 3, tanggalPersetujuan: new Date(),
       kelasPerkuliahan: { connect: [{ id: kelasAlgoC.id }] },
+    },
+  });
+
+  // Eva's KRS → DITOLAK (rejected) — demonstrates the rejection flow.
+  // catatanDosen is the rejection reason shown to the student.
+  await prisma.kRS.upsert({
+    where: {
+      mahasiswaId_academicYear: {
+        mahasiswaId: evaRejected.id,
+        academicYear: activeAcademicYear,
+      },
+    },
+    update: {
+      status: StatusKRS.DITOLAK, totalSKS: 3,
+      kelasPerkuliahan: { set: [{ id: kelasWebA.id }] },
+      tanggalPengajuan: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      tanggalPersetujuan: null,
+      catatanDosen: 'Jumlah SKS tidak memenuhi syarat minimum semester ini. Silakan konsultasi dengan dosen PA.',
+    },
+    create: {
+      mahasiswaId: evaRejected.id, academicYear: activeAcademicYear,
+      status: StatusKRS.DITOLAK, totalSKS: 3,
+      tanggalPengajuan: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      catatanDosen: 'Jumlah SKS tidak memenuhi syarat minimum semester ini. Silakan konsultasi dengan dosen PA.',
+      kelasPerkuliahan: { connect: [{ id: kelasWebA.id }] },
     },
   });
 
   // ==========================================
   // 4b. DANI's KRS & NILAI (KHS + TRANSKRIP DATA)
   // ==========================================
-  // Dani sudah menyelesaikan semester 1 (2023/2024 Ganjil), semester 2 (2023/2024 Genap),
-  // dan sedang semester 3 aktif (2024/2025 Genap).
+  // Dani completed semester 1 (2023/2024 Ganjil) and semester 2 (2023/2024 Genap),
+  // and is currently active in semester 3. This enables testing:
+  //   GET /academic/pa/mahasiswa/:id/khs?semester=2023/2024 Ganjil
+  //   GET /academic/pa/mahasiswa/:id/transkrip
+  //   GET /academic/pa/mahasiswa/:id/ringkasan
 
   const sem1AY = '2023/2024 Ganjil';
   const sem2AY = '2023/2024 Genap';
-  const sem3AY = activeAcademicYear; // semester aktif saat ini
+  const sem3AY = activeAcademicYear;
 
-  // --- KRS Semester 1 (DISETUJUI, sudah selesai) ---
+  // Semester 1 KRS (completed, approved)
   await prisma.kRS.upsert({
     where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem1AY } },
     update: { status: StatusKRS.DISETUJUI, totalSKS: 13, tanggalPersetujuan: new Date('2023-09-05') },
@@ -459,7 +511,7 @@ async function main() {
     },
   });
 
-  // --- KRS Semester 2 (DISETUJUI, sudah selesai) ---
+  // Semester 2 KRS (completed, approved)
   await prisma.kRS.upsert({
     where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem2AY } },
     update: { status: StatusKRS.DISETUJUI, totalSKS: 14, tanggalPersetujuan: new Date('2024-02-10') },
@@ -470,7 +522,7 @@ async function main() {
     },
   });
 
-  // --- KRS Semester 3 Aktif (DISETUJUI, sedang berjalan) ---
+  // Semester 3 KRS (active, approved) — enrolled in Web A and Algo A
   await prisma.kRS.upsert({
     where: { mahasiswaId_academicYear: { mahasiswaId: daniTranskrip.id, academicYear: sem3AY } },
     update: {
@@ -486,8 +538,7 @@ async function main() {
     },
   });
 
-  // --- NILAI Semester 1 (2023/2024 Ganjil) ---
-  // Dasar Pemrograman: A (4.0), Kalkulus I: B+ (3.5), Fisika: B (3.0), B.Inggris: A (4.0), PTI: A (4.0)
+  // --- Semester 1 grades: Dasar Prog A, Kalkulus I B+, Fisika B, B.Inggris A, PTI A ---
   const nilaiSem1 = [
     { mataKuliahId: mkDasarProg.id,    nilaiTugas: 88, nilaiUTS: 85, nilaiUAS: 90, nilaiAkhir: 88, nilaiHuruf: 'A',  indeksNilai: 4.0 },
     { mataKuliahId: mkKalkulus1.id,     nilaiTugas: 78, nilaiUTS: 80, nilaiUAS: 75, nilaiAkhir: 78, nilaiHuruf: 'B+', indeksNilai: 3.5 },
@@ -504,8 +555,7 @@ async function main() {
     });
   }
 
-  // --- NILAI Semester 2 (2023/2024 Genap) ---
-  // OOP: A (4.0), Kalkulus II: B (3.0), Statistika: B+ (3.5), Logika: A (4.0), Sisdig: B+ (3.5)
+  // --- Semester 2 grades: OOP A, Kalkulus II B, Statistika B+, Logika A, Sisdig B+ ---
   const nilaiSem2 = [
     { mataKuliahId: mkOop.id,        nilaiTugas: 90, nilaiUTS: 87, nilaiUAS: 92, nilaiAkhir: 90, nilaiHuruf: 'A',  indeksNilai: 4.0 },
     { mataKuliahId: mkKalkulus2.id,   nilaiTugas: 70, nilaiUTS: 72, nilaiUAS: 68, nilaiAkhir: 70, nilaiHuruf: 'B',  indeksNilai: 3.0 },
@@ -522,150 +572,81 @@ async function main() {
     });
   }
 
-  // --- NILAI Semester 3 aktif: Basis Data sudah ada (mid-semester), Web & Algo belum ---
+  // Semester 3 mid-semester: Basis Data partial (no UAS yet → BELUM_ADA)
   await prisma.nilai.upsert({
     where: { mahasiswaId_mataKuliahId_academicYear: { mahasiswaId: daniTranskrip.id, mataKuliahId: mkBasisData.id, academicYear: sem3AY } },
     update: { nilaiTugas: 85, nilaiUTS: 80, nilaiUAS: 0, nilaiAkhir: 0, nilaiHuruf: null, indeksNilai: null, status: 'BELUM_ADA' },
     create: { mahasiswaId: daniTranskrip.id, academicYear: sem3AY, mataKuliahId: mkBasisData.id, status: 'BELUM_ADA', nilaiTugas: 85, nilaiUTS: 80 },
   });
 
-  // Update IPK dan total SKS lulus untuk Dani berdasarkan Nilai yang sudah di-seed
-  // Sem1: 3*4.0 + 3*3.5 + 3*3.0 + 2*4.0 + 2*4.0 = 12+10.5+9+8+8 = 47.5 / 13 SKS = 3.65
-  // Sem2: 3*4.0 + 3*3.0 + 3*3.5 + 3*4.0 + 2*3.5 = 12+9+10.5+12+7 = 50.5 / 14 SKS = 3.61
-  // IPK: (47.5+50.5) / (13+14) = 98/27 = 3.63
+  // Recalculate Dani's cumulative IPK and total passed SKS.
+  // Sem1: 3*4.0 + 3*3.5 + 3*3.0 + 2*4.0 + 2*4.0 = 47.5 / 13 SKS
+  // Sem2: 3*4.0 + 3*3.0 + 3*3.5 + 3*4.0 + 2*3.5 = 50.5 / 14 SKS
+  // IPK cumulative: (47.5 + 50.5) / (13 + 14) = 98 / 27 ≈ 3.63
   await prisma.user.update({
     where: { id: daniTranskrip.id },
     data: { ipk: 3.63, totalSksLulus: 27, semesterTerakhir: sem3AY },
   });
 
   // ==========================================
-  // 5. E-LEARNING CONFIG SCENARIOS (COLLAB)
+  // 5. E-LEARNING CONFIG SCENARIOS
   // ==========================================
+
+  // Web A: NEW (master source for Web B and Web D)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasWebA.id },
-    update: {
-      setupMode: ElearningSetupMode.NEW,
-      sourceKelasPerkuliahanId: null,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasWebA.id,
-      setupMode: ElearningSetupMode.NEW,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
+    update: { setupMode: ElearningSetupMode.NEW, sourceKelasPerkuliahanId: null, isMergedClass: false, createdByDosenId: dosen.id },
+    create: { kelasPerkuliahanId: kelasWebA.id, setupMode: ElearningSetupMode.NEW, isMergedClass: false, createdByDosenId: dosen.id },
   });
 
+  // Web B: EXISTING + isMergedClass=true (cross-dosen merge — reads Web A content)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasWebB.id },
-    update: {
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasWebA.id,
-      isMergedClass: true,
-      createdByDosenId: dosenKolab1.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasWebB.id,
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasWebA.id,
-      isMergedClass: true,
-      createdByDosenId: dosenKolab1.id,
-    },
+    update: { setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasWebA.id, isMergedClass: true, createdByDosenId: dosenKolab1.id },
+    create: { kelasPerkuliahanId: kelasWebB.id, setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasWebA.id, isMergedClass: true, createdByDosenId: dosenKolab1.id },
   });
 
+  // Web C: NEW + independent (dosenKolab2, no merge)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasWebC.id },
-    update: {
-      setupMode: ElearningSetupMode.NEW,
-      sourceKelasPerkuliahanId: null,
-      isMergedClass: false,
-      createdByDosenId: dosenKolab2.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasWebC.id,
-      setupMode: ElearningSetupMode.NEW,
-      isMergedClass: false,
-      createdByDosenId: dosenKolab2.id,
-    },
+    update: { setupMode: ElearningSetupMode.NEW, sourceKelasPerkuliahanId: null, isMergedClass: false, createdByDosenId: dosenKolab2.id },
+    create: { kelasPerkuliahanId: kelasWebC.id, setupMode: ElearningSetupMode.NEW, isMergedClass: false, createdByDosenId: dosenKolab2.id },
   });
 
+  // Web D: EXISTING + isMergedClass=false (clone of Web A with hidden content)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasWebD.id },
-    update: {
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasWebA.id,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasWebD.id,
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasWebA.id,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
+    update: { setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasWebA.id, isMergedClass: false, createdByDosenId: dosen.id },
+    create: { kelasPerkuliahanId: kelasWebD.id, setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasWebA.id, isMergedClass: false, createdByDosenId: dosen.id },
   });
 
-  // --- SKENARIO SAMA DOSEN: AlgoB = master (NEW), AlgoC = member (EXISTING+merged) ---
-  // AlgoB: kelas utama milik Dosen 1, setup elearning baru (master)
+  // Algo B: NEW (master source for Algo C — same-dosen merge scenario)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasAlgoB.id },
-    update: {
-      setupMode: ElearningSetupMode.NEW,
-      sourceKelasPerkuliahanId: null,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasAlgoB.id,
-      setupMode: ElearningSetupMode.NEW,
-      isMergedClass: false,
-      createdByDosenId: dosen.id,
-    },
+    update: { setupMode: ElearningSetupMode.NEW, sourceKelasPerkuliahanId: null, isMergedClass: false, createdByDosenId: dosen.id },
+    create: { kelasPerkuliahanId: kelasAlgoB.id, setupMode: ElearningSetupMode.NEW, isMergedClass: false, createdByDosenId: dosen.id },
   });
 
-  // AlgoC: kelas kedua milik Dosen 1 (DOSEN PENGAMPUH SAMA), di-merge ke AlgoB
-  // Ini mensimulasikan skenario: 1 dosen → 2 kelas berbeda → elearning digabung
+  // Algo C: EXISTING + isMergedClass=true (same-dosen merge into Algo B).
+  // Citra is enrolled here but reads Algo B content transparently.
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasAlgoC.id },
-    update: {
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasAlgoB.id,
-      isMergedClass: true,
-      createdByDosenId: dosen.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasAlgoC.id,
-      setupMode: ElearningSetupMode.EXISTING,
-      sourceKelasPerkuliahanId: kelasAlgoB.id,
-      isMergedClass: true,
-      createdByDosenId: dosen.id,
-    },
+    update: { setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasAlgoB.id, isMergedClass: true, createdByDosenId: dosen.id },
+    create: { kelasPerkuliahanId: kelasAlgoC.id, setupMode: ElearningSetupMode.EXISTING, sourceKelasPerkuliahanId: kelasAlgoB.id, isMergedClass: true, createdByDosenId: dosen.id },
   });
 
-  // AlgoA: kelas milik dosenKolab1, elearning mandiri (NEW) — diikuti Dani
+  // Algo A: NEW + independent (dosenKolab1, Dani enrolled)
   await prisma.elearningClassConfig.upsert({
     where: { kelasPerkuliahanId: kelasAlgoA.id },
-    update: {
-      setupMode: ElearningSetupMode.NEW,
-      sourceKelasPerkuliahanId: null,
-      isMergedClass: false,
-      createdByDosenId: dosenKolab1.id,
-    },
-    create: {
-      kelasPerkuliahanId: kelasAlgoA.id,
-      setupMode: ElearningSetupMode.NEW,
-      isMergedClass: false,
-      createdByDosenId: dosenKolab1.id,
-    },
+    update: { setupMode: ElearningSetupMode.NEW, sourceKelasPerkuliahanId: null, isMergedClass: false, createdByDosenId: dosenKolab1.id },
+    create: { kelasPerkuliahanId: kelasAlgoA.id, setupMode: ElearningSetupMode.NEW, isMergedClass: false, createdByDosenId: dosenKolab1.id },
   });
 
   // ==========================================
   // 6. E-LEARNING CONTENT
   // ==========================================
 
-  // Helper: buat 16 sesi kosong default untuk 1 kelas
+  // Helper: create 16 default empty sessions for a class
   const createDefaultSessions = async (kelasPerkuliahanId: number) => {
     const sessions: { id: string; weekNumber: number }[] = [];
     for (let i = 1; i <= 16; i++) {
@@ -678,97 +659,127 @@ async function main() {
     return sessions;
   };
 
-  // --- KELAS WEB A (NEW, master — milik dosen) ---
-  // 16 sesi; konten aktif di sesi 1 (materi+tugas) dan sesi 2 (quiz)
+  // -------------------------------------------------------
+  // WEB A (master, NEW) — full content for testing all flows
+  // -------------------------------------------------------
   const webASessions = await createDefaultSessions(kelasWebA.id);
 
+  // Session 1: materials (one visible, one hidden) + assignment with bobot
+  // isHidden=false → visible to students; isHidden=true → only lecturer sees it
   await prisma.material.createMany({
     data: [
       {
-        title: 'Slide Pengenalan Web',
+        title: 'Slide Pengenalan Web Development',
         type: MaterialType.FILE,
-        fileUrl: 'https://example.com/slide.pdf',
+        fileUrl: 'https://example.com/slide-web-intro.pdf',
         isHidden: false,
         sessionId: webASessions[0].id,
       },
       {
-        title: 'Draft Materi Khusus Lanjutan',
+        title: 'Catatan Tambahan (Draft — belum dipublish)',
         type: MaterialType.TEXT,
-        content: 'Materi ini masih disembunyikan untuk mahasiswa',
+        content: 'Materi ini masih dalam penyusunan dan belum ditampilkan ke mahasiswa.',
         isHidden: true,
         sessionId: webASessions[0].id,
       },
     ],
   });
 
-  const assignment1 = await prisma.assignment.create({
+  // Assignment 1: TUGAS kategori (bobot 20%) — visible, deadline future
+  // Test flow: student submits → lecturer grades via PATCH /elearning/submission/:id/grade
+  const assignment1WebA = await prisma.assignment.create({
     data: {
-      title: 'Tugas 1: Buat Profil Biodata',
-      description: 'Gunakan HTML dan CSS murni.',
+      title: 'Tugas 1: Buat Halaman Profil HTML',
+      description: 'Buat halaman profil personal menggunakan HTML & CSS murni. Kumpulkan link repository GitHub.',
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       allowLate: true,
       isHidden: false,
+      kategori: TaskKategori.TUGAS,
+      bobot: 20,
       sessionId: webASessions[0].id,
     },
   });
 
-  await prisma.assignment.create({
+  // Assignment 2: TUGAS kategori (bobot 0%) — hidden draft, not yet published
+  const assignment2WebA = await prisma.assignment.create({
     data: {
-      title: 'Tugas 2: Mini Landing Page',
-      description: 'Masih disiapkan, belum ditampilkan ke mahasiswa',
-      deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      title: 'Tugas 2: Mini Landing Page (Draft)',
+      description: 'Akan dipublish setelah pertemuan 2 selesai.',
+      deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       allowLate: false,
       isHidden: true,
+      kategori: TaskKategori.TUGAS,
+      bobot: 0,
       sessionId: webASessions[0].id,
     },
   });
 
-  // Budi (enrolled via WebB yang merged ke WebA) mengumpulkan Tugas 1
-  await prisma.submission.create({
+  // Session 2: UTS assignment (bobot 30%) + quiz (bobot 10%) + hidden quiz draft
+  const assignmentUTSWebA = await prisma.assignment.create({
     data: {
-      studentId: budiActive.id,
-      assignmentId: assignment1.id,
-      textContent: 'Ini tugas saya pak, link repository: github.com/budi/tugas1',
-      grade: 90,
+      title: 'UTS: Implementasi Responsive Web',
+      description: 'Implementasikan halaman web responsive dengan 3 breakpoint.',
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      allowLate: false,
+      isHidden: false,
+      kategori: TaskKategori.UTS,
+      bobot: 30,
+      sessionId: webASessions[1].id,
     },
   });
 
-  const quiz1 = await prisma.quiz.create({
+  // Quiz 1: active (startTime past, endTime future) — students can attempt it
+  // kategori=KUIS, bobot=10%, grading=HIGHEST_GRADE
+  const quiz1WebA = await prisma.quiz.create({
     data: {
       title: 'Quiz 1: HTML Tag Basics',
+      description: 'Uji pemahaman dasar tentang HTML tags dan atribut.',
       duration: 30,
       startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      endTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
       isHidden: false,
+      kategori: TaskKategori.KUIS,
+      bobot: 10,
       sessionId: webASessions[1].id,
       questions: {
         create: [
           {
-            text: 'Apa tag untuk membuat hyperlink?',
+            text: 'Tag HTML yang digunakan untuk membuat hyperlink adalah?',
             type: QuestionType.MULTIPLE_CHOICE,
             options: ['<a>', '<link>', '<href>', '<p>'],
             correctAnswer: '<a>',
-            points: 100,
+            points: 50,
+          },
+          {
+            text: 'Atribut yang wajib ada pada tag <img> adalah?',
+            type: QuestionType.MULTIPLE_CHOICE,
+            options: ['src', 'href', 'class', 'id'],
+            correctAnswer: 'src',
+            points: 50,
           },
         ],
       },
     },
   });
 
+  // Quiz 2: hidden draft (not published to students)
   await prisma.quiz.create({
     data: {
-      title: 'Quiz 2: CSS Draft Quiz',
+      title: 'Quiz 2: CSS Layout Draft',
+      description: 'Draft — belum dipublish.',
       duration: 20,
-      startTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      endTime: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
+      startTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       gradingMethod: QuizGradingMethod.LATEST_GRADE,
       isHidden: true,
+      kategori: TaskKategori.KUIS,
+      bobot: 0,
       sessionId: webASessions[1].id,
       questions: {
         create: [
           {
-            text: 'Properti CSS untuk warna teks?',
+            text: 'CSS property untuk warna teks adalah?',
             type: QuestionType.MULTIPLE_CHOICE,
             options: ['font-color', 'color', 'text-color', 'fgcolor'],
             correctAnswer: 'color',
@@ -779,26 +790,80 @@ async function main() {
     },
   });
 
-  // Budi mengerjakan Quiz 1
-  await prisma.quizAttempt.create({
+  // Session 3: UAS assignment (bobot 40%) — not yet open for submission
+  await prisma.assignment.create({
     data: {
-      studentId: budiActive.id,
-      quizId: quiz1.id,
-      score: 100,
-      finishedAt: new Date(),
+      title: 'UAS: Full-Stack Web Project',
+      description: 'Bangun aplikasi web lengkap dengan frontend dan backend sederhana.',
+      deadline: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+      allowLate: false,
+      isHidden: false,
+      kategori: TaskKategori.UAS,
+      bobot: 40,
+      sessionId: webASessions[2].id,
     },
   });
 
-  // --- KELAS WEB C (NEW, independen — milik dosenKolab2) ---
-  // 16 sesi kosong; dosen mengisi materi sendiri
+  // -------------------------------------------------------
+  // SUBMISSIONS & QUIZ ATTEMPTS — populate participation & grades data
+  // -------------------------------------------------------
+
+  // Budi submits Assignment 1 → GRADED (grade=90).
+  // Use to test: GET /elearning/assignment/:id/submissions (as dosen)
+  //              GET /elearning/kelas/:id/participation (dosen sees Budi's submission)
+  //              GET /elearning/kelas/:id/my-grades (Budi sees his own grade)
+  //              GET /elearning/kelas/:id/ranking (Budi's rank appears)
+  const budiSub1 = await prisma.submission.create({
+    data: {
+      studentId: budiActive.id,
+      assignmentId: assignment1WebA.id,
+      textContent: 'Link repo: https://github.com/budi-santoso/tugas1-web',
+      grade: 90,
+      feedback: 'Bagus! Struktur HTML sudah rapi. Perhatikan semantic tags.',
+    },
+  });
+
+  // Dani submits Assignment 1 → UNGRADED (no grade yet).
+  // Use to test: PATCH /elearning/submission/:id/grade — grade this submission
+  const daniSub1 = await prisma.submission.create({
+    data: {
+      studentId: daniTranskrip.id,
+      assignmentId: assignment1WebA.id,
+      textContent: 'Link repo: https://github.com/dani-firmansyah/html-profile',
+      grade: null,
+      feedback: null,
+    },
+  });
+
+  // Budi attempts Quiz 1 → full score (100/100 → 100%)
+  // Use to test: GET /elearning/quiz/:id/attempts (as dosen)
+  const budiAttempt1 = await prisma.quizAttempt.create({
+    data: {
+      studentId: budiActive.id,
+      quizId: quiz1WebA.id,
+      score: 100,
+      finishedAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
+    },
+  });
+
+  // Dani attempts Quiz 1 → partial score (50/100 → 50%)
+  const daniAttempt1 = await prisma.quizAttempt.create({
+    data: {
+      studentId: daniTranskrip.id,
+      quizId: quiz1WebA.id,
+      score: 50,
+      finishedAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
+    },
+  });
+
+  // -------------------------------------------------------
+  // WEB C (NEW, independent — dosenKolab2, no students enrolled)
+  // -------------------------------------------------------
   await createDefaultSessions(kelasWebC.id);
 
-  // Catatan: Kelas WEB D (EXISTING non-merged, clone dari WebA) TIDAK dibuat manual.
-  // 16 sesinya akan di-clone dari WebA oleh blok EXTRA di bawah (isHidden=true).
-
-  // --- KELAS ALGO B (NEW, master merge — milik dosen) ---
-  // AlgoC tidak punya sesi sendiri; membaca dari AlgoB via isMergedClass=true
-  // 16 sesi; konten aktif di sesi 1 (materi+tugas) dan sesi 2 (quiz)
+  // -------------------------------------------------------
+  // ALGO B (NEW, master for same-dosen merge — Citra enrolled via Algo C)
+  // -------------------------------------------------------
   const algoBSessions = await createDefaultSessions(kelasAlgoB.id);
 
   await prisma.material.createMany({
@@ -806,49 +871,59 @@ async function main() {
       {
         title: 'Slide Big O Notation',
         type: MaterialType.FILE,
-        fileUrl: 'https://example.com/big-o.pdf',
+        fileUrl: 'https://example.com/big-o-notation.pdf',
         isHidden: false,
         sessionId: algoBSessions[0].id,
       },
       {
-        title: 'Catatan Dosen: Contoh Kode Tambahan',
+        title: 'Contoh Kode Tambahan (Hidden)',
         type: MaterialType.TEXT,
-        content: 'Materi suplemen ini disembunyikan sementara sebelum kelas.',
+        content: 'Materi suplemen ini disembunyikan sebelum kelas dimulai.',
         isHidden: true,
         sessionId: algoBSessions[0].id,
       },
     ],
   });
 
+  // Assignment Algo B 1: TUGAS bobot=30%
   const assignmentAlgoB1 = await prisma.assignment.create({
     data: {
       title: 'Tugas 1: Analisis Kompleksitas Sorting',
-      description: 'Tentukan kompleksitas waktu untuk 3 algoritma sorting berbeda.',
+      description: 'Tentukan dan jelaskan kompleksitas waktu untuk 3 algoritma sorting (Bubble, Merge, Quick).',
       deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       allowLate: false,
       isHidden: false,
+      kategori: TaskKategori.TUGAS,
+      bobot: 30,
       sessionId: algoBSessions[0].id,
     },
   });
 
-  // Citra (enrolled via AlgoC yang merged ke AlgoB) mengumpulkan tugas
-  await prisma.submission.create({
+  // Assignment Algo B 2: UTS bobot=30%
+  await prisma.assignment.create({
     data: {
-      studentId: citraAlgo.id,
-      assignmentId: assignmentAlgoB1.id,
-      textContent: 'Bubble Sort: O(n²), Merge Sort: O(n log n), Binary Search: O(log n)',
-      grade: 85,
+      title: 'UTS: Implementasi Linked List',
+      description: 'Implementasikan singly linked list dengan operasi insert, delete, dan search.',
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      allowLate: false,
+      isHidden: false,
+      kategori: TaskKategori.UTS,
+      bobot: 30,
+      sessionId: algoBSessions[1].id,
     },
   });
 
-  await prisma.quiz.create({
+  // Quiz Algo B: KUIS bobot=10%, active
+  const quizAlgoB1 = await prisma.quiz.create({
     data: {
       title: 'Quiz 1: Stack & Queue Basics',
       duration: 20,
       startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      endTime: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       gradingMethod: QuizGradingMethod.HIGHEST_GRADE,
       isHidden: false,
+      kategori: TaskKategori.KUIS,
+      bobot: 10,
       sessionId: algoBSessions[1].id,
       questions: {
         create: [
@@ -864,57 +939,190 @@ async function main() {
     },
   });
 
-  // --- KELAS ALGO A (NEW, independen — milik dosenKolab1, diikuti Dani) ---
-  // 16 sesi kosong; dosen mengisi materi sendiri
+  // Citra submits Algo B Assignment 1 → GRADED (grade=85)
+  // Note: Citra is enrolled in Algo C (member), which transparently reads Algo B (master).
+  await prisma.submission.create({
+    data: {
+      studentId: citraAlgo.id,
+      assignmentId: assignmentAlgoB1.id,
+      textContent: 'Bubble Sort: O(n²) worst, O(n) best. Merge Sort: O(n log n). Quick Sort: O(n²) worst.',
+      grade: 85,
+      feedback: 'Analisis sudah benar. Tambahkan contoh kode untuk nilai lebih.',
+    },
+  });
+
+  // Citra attempts Quiz Algo B 1 → perfect score
+  await prisma.quizAttempt.create({
+    data: {
+      studentId: citraAlgo.id,
+      quizId: quizAlgoB1.id,
+      score: 100,
+      finishedAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+    },
+  });
+
+  // -------------------------------------------------------
+  // ALGO A (NEW, independent — dosenKolab1, Dani enrolled)
+  // -------------------------------------------------------
   await createDefaultSessions(kelasAlgoA.id);
 
   // ==========================================
-  // ASSIGN DOSEN PEMBIMBING AKADEMIK (PA)
+  // 7. ASSIGN DOSEN PA (ACADEMIC ADVISOR)
   // ==========================================
-  console.log('👨‍🏫 Assigning Dosen PA (Pembimbing Akademik)...');
-  // Assign Dr. Budi Hartono sebagai PA untuk semua mahasiswa
+  console.log('👨‍🏫 Assigning Academic Advisors (Dosen PA)...');
+  // dosen (Dr. Budi Hartono) is the academic advisor for all students.
+  // Test flow: GET /academic/pa/mahasiswa → list students under this advisor
   await prisma.user.updateMany({
-    where: { id: { in: [andiBlank.id, budiActive.id, citraAlgo.id, daniTranskrip.id] } },
+    where: { id: { in: [andiBlank.id, budiActive.id, citraAlgo.id, daniTranskrip.id, evaRejected.id] } },
     data: { dosenPAId: dosen.id },
   });
 
   // ==========================================
-  // EXTRA: Simulate controller/service flows for testing
+  // 8. PRESENSI (ATTENDANCE) SESSIONS
   // ==========================================
-  console.log('🧪 Simulating controller/service flows for testing...');
+  console.log('📋 Creating presensi sessions...');
 
-  // 1) Andi: add class Pemrograman Web A to KRS, submit, and approve by PA (dosen)
+  const generateToken = (length: number) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+    return result;
+  };
+
+  // Presensi session 1 (Web B): OPEN — students can still submit via token.
+  // Budi is marked HADIR via TOKEN.
+  // Test flow: POST /presensi/submit with token
+  const tokenWebB1 = generateToken(8);
+  const presensiWebB1 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 1 - Pengenalan Web',
+      type: 'KELAS',
+      kelasPerkuliahanId: kelasWebB.id,
+      date: new Date(),
+      isOpen: true,
+      token: tokenWebB1,
+      deadlineAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.presensiRecord.create({
+    data: { sessionId: presensiWebB1.id, mahasiswaId: budiActive.id, method: 'TOKEN', status: 'HADIR' },
+  });
+
+  // Presensi session 2 (Web A): CLOSED — testing a closed session scenario.
+  // Dani is marked HADIR via MANUAL entry.
+  // Test flow: GET /presensi/kelas/:id/sessions → see this closed session
+  const tokenWebA1 = generateToken(8);
+  const presensiWebA1 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 1 - Pengenalan Web Development',
+      type: 'KELAS',
+      kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      isOpen: false,
+      token: tokenWebA1,
+      deadlineAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.presensiRecord.create({
+    data: { sessionId: presensiWebA1.id, mahasiswaId: daniTranskrip.id, method: 'MANUAL', status: 'HADIR' },
+  });
+
+  // Presensi session 3 (Algo B): OPEN — for testing same-dosen merge presensi.
+  // Citra not yet recorded (tests Alpha/missing case in GET /presensi/kelas/:id/mahasiswa)
+  const tokenAlgoB1 = generateToken(8);
+  await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 1 - Big O Notation',
+      type: 'KELAS',
+      kelasPerkuliahanId: kelasAlgoB.id,
+      date: new Date(),
+      isOpen: true,
+      token: tokenAlgoB1,
+      deadlineAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+    },
+  });
+
+  // ==========================================
+  // 9. PENGUMUMAN (ANNOUNCEMENTS)
+  // ==========================================
+  console.log('📢 Creating announcements...');
+
+  // Global announcement (no specific class) — visible to all students.
+  // Use to test: GET /pengumuman?isGlobal=true
+  await prisma.pengumuman.create({
+    data: {
+      judul: 'Pengingat: Batas Akhir Pengisian KRS',
+      isi: 'Mahasiswa diharapkan mengisi dan mengajukan KRS sebelum tanggal 15 bulan ini. KRS yang belum diajukan tidak akan diproses.',
+      kategori: 'AKADEMIK',
+      prioritas: 'TINGGI',
+      aktif: true,
+      isGlobal: true,
+      dosenId: koorprodi.id,
+    },
+  });
+
+  // Class-specific announcement for Web A and Web B.
+  // Use to test: GET /pengumuman?kelasId=<WebA_ID>
+  await prisma.pengumuman.create({
+    data: {
+      judul: 'Perubahan Jadwal Kelas Pemrograman Web',
+      isi: 'Pertemuan minggu depan dipindah ke Selasa jam 10:00 di Lab Komputer 2. Harap konfirmasi kehadiran.',
+      kategori: 'AKADEMIK',
+      prioritas: 'NORMAL',
+      aktif: true,
+      isGlobal: false,
+      dosenId: dosen.id,
+      kelas: { connect: [{ id: kelasWebA.id }, { id: kelasWebB.id }] },
+    },
+  });
+
+  // Announcement for Algo classes.
+  await prisma.pengumuman.create({
+    data: {
+      judul: 'Materi Quiz 1 Algoritma',
+      isi: 'Quiz 1 akan mencakup materi Big O Notation dan Stack & Queue. Pelajari slide yang sudah diunggah.',
+      kategori: 'AKADEMIK',
+      prioritas: 'NORMAL',
+      aktif: true,
+      isGlobal: false,
+      dosenId: dosen.id,
+      kelas: { connect: [{ id: kelasAlgoB.id }, { id: kelasAlgoC.id }] },
+    },
+  });
+
+  // ==========================================
+  // EXTRA: Simulate service/controller flows
+  // ==========================================
+  console.log('🧪 Simulating extra controller/service flows...');
+
+  // 1) Andi: add Web A to KRS → submit → approve (simulates full KRS approval flow)
   try {
     const andiKrs = await prisma.kRS.findUnique({
       where: { mahasiswaId_academicYear: { mahasiswaId: andiBlank.id, academicYear: activeAcademicYear } },
       include: { kelasPerkuliahan: true },
     });
 
-    if (andiKrs) {
-      if ((andiKrs.kelasPerkuliahan || []).length === 0) {
-        const updated = await prisma.kRS.update({
-          where: { id: andiKrs.id },
-          data: {
-            totalSKS: { increment: mkWeb.sks },
-            kelasPerkuliahan: { connect: { id: kelasWebA.id } },
-          },
-        });
-        console.log(`- Andi: connected to kelas ${kelasWebA.nama ?? kelasWebA.id}`);
-
-        await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DIAJUKAN, tanggalPengajuan: new Date() } });
-        console.log('- Andi: submitted KRS (DIAJUKAN)');
-
-        await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DISETUJUI, tanggalPersetujuan: new Date(), catatanDosen: 'Disetujui oleh seed' } });
-        console.log('- Dosen: approved Andi KRS (DISETUJUI)');
-      } else {
-        console.log('- Andi already has classes in KRS, skipping add/submit flow');
-      }
+    if (andiKrs && (andiKrs.kelasPerkuliahan || []).length === 0) {
+      const updated = await prisma.kRS.update({
+        where: { id: andiKrs.id },
+        data: {
+          totalSKS: { increment: mkWeb.sks },
+          kelasPerkuliahan: { connect: { id: kelasWebA.id } },
+        },
+      });
+      await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DIAJUKAN, tanggalPengajuan: new Date() } });
+      await prisma.kRS.update({ where: { id: updated.id }, data: { status: StatusKRS.DISETUJUI, tanggalPersetujuan: new Date(), catatanDosen: 'Disetujui.' } });
+      console.log('  ✓ Andi KRS: DRAFT → DIAJUKAN → DISETUJUI');
+    } else {
+      console.log('  ⚠ Andi already has classes in KRS, skipping flow');
     }
   } catch (e) {
-    console.error('⚠️ Andi KRS flow failed:', e instanceof Error ? e.message : e);
+    console.error('  ✗ Andi KRS flow failed:', e instanceof Error ? e.message : e);
   }
 
-  // 2) Clone elearning content for EXISTING non-merged configs (simulate clone behavior)
+  // 2) Clone e-learning content for EXISTING non-merged configs (Web D)
   try {
     const configsToClone = await prisma.elearningClassConfig.findMany({
       where: { setupMode: ElearningSetupMode.EXISTING, isMergedClass: false, sourceKelasPerkuliahanId: { not: null } },
@@ -923,7 +1131,7 @@ async function main() {
     for (const cfg of configsToClone) {
       await prisma.$transaction(async (tx) => {
         const existingCount = await tx.session.count({ where: { kelasPerkuliahanId: cfg.kelasPerkuliahanId } });
-        if (existingCount > 0) return; // skip if target already has content
+        if (existingCount > 0) return;
 
         const sourceSessions = await tx.session.findMany({
           where: { kelasPerkuliahanId: cfg.sourceKelasPerkuliahanId! },
@@ -942,125 +1150,103 @@ async function main() {
                 create: s.materials.map((m) => ({ title: m.title, type: m.type, content: m.content, fileUrl: m.fileUrl, isHidden: true })),
               },
               assignments: {
-                create: s.assignments.map((a) => ({ title: a.title, description: a.description, fileUrl: a.fileUrl, deadline: a.deadline, allowLate: a.allowLate, isHidden: true })),
+                create: s.assignments.map((a) => ({
+                  title: a.title, description: a.description, fileUrl: a.fileUrl,
+                  deadline: a.deadline, allowLate: a.allowLate, isHidden: true,
+                  kategori: a.kategori, bobot: a.bobot,
+                })),
               },
               quizzes: {
                 create: s.quizzes.map((q) => ({
-                  title: q.title,
-                  description: q.description,
-                  duration: q.duration,
-                  startTime: q.startTime,
-                  endTime: q.endTime,
-                  gradingMethod: q.gradingMethod,
-                  isHidden: true,
+                  title: q.title, description: q.description, duration: q.duration,
+                  startTime: q.startTime, endTime: q.endTime, gradingMethod: q.gradingMethod,
+                  isHidden: true, kategori: q.kategori, bobot: q.bobot,
                   questions: { create: q.questions.map((qq) => ({ text: qq.text, type: qq.type, options: qq.options ?? undefined, correctAnswer: qq.correctAnswer, points: qq.points })) },
                 })),
               },
             },
           });
         }
-        console.log(`- Cloned ${sourceSessions.length} sessions into kelasId=${cfg.kelasPerkuliahanId}`);
+        console.log(`  ✓ Cloned ${sourceSessions.length} sessions into kelasId=${cfg.kelasPerkuliahanId}`);
       });
     }
   } catch (e) {
-    console.error('⚠️ Elearning clone flow failed:', e instanceof Error ? e.message : e);
-  }
-
-  // 3) Presensi: create a token session for kelasWebB and mark Budi hadir
-  try {
-    const generateToken = (length: number) => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let result = '';
-      for (let i = 0; i < length; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-      return result;
-    };
-
-    const token = generateToken(8);
-    const presensiSession = await prisma.presensiSession.create({
-      data: {
-        title: 'Sesi Presensi Testing',
-        type: 'KELAS',
-        kelasPerkuliahanId: kelasWebB.id,
-        date: new Date(),
-        isOpen: true,
-        token,
-        deadlineAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
-      },
-    });
-
-    await prisma.presensiRecord.create({ data: { sessionId: presensiSession.id, mahasiswaId: budiActive.id, method: 'TOKEN', status: 'HADIR' } });
-    console.log(`- Presensi created for kelasWebB (session ${presensiSession.id}), Budi marked HADIR (token ${token})`);
-  } catch (e) {
-    console.error('⚠️ Presensi simulation failed:', e instanceof Error ? e.message : e);
+    console.error('  ✗ E-learning clone flow failed:', e instanceof Error ? e.message : e);
   }
 
   // ==========================================
   // SUMMARY
   // ==========================================
-  console.log('✅ Seeding Complete!');
-  console.log('\n--- HOW TO TEST YOUR FLOWS ---');
-  
-  console.log('\n👤 STUDENT 1 (STARTING FROM SCRATCH):');
-  console.log('Email: andi@univ.ac.id | Pass: 123456');
-  console.log('  -> Login as Andi. You should see an empty KRS (DRAFT state).');
-  console.log('  -> Go to the contract page, select "Pemrograman Web A", and submit it (changes status to DIAJUKAN).');
-  
-  console.log('\n👤 ADMIN / LECTURER (APPROVAL):');
-  console.log('Email: koor@univ.ac.id OR dosen@univ.ac.id | Pass: 123456');
-  console.log('  -> After Andi submits, log in here to approve or decline his KRS.');
+  console.log('\n✅ Seeding Complete!');
+  console.log('========================================================');
+  console.log('ALL PASSWORDS: 123456');
+  console.log('========================================================');
 
-  console.log('\n👨‍🏫 MULTI DOSEN KOLABORASI E-LEARNING:');
-  console.log('Dosen 1 (master): dosen@univ.ac.id | Pass: 123456');
-  console.log('Dosen 2 (member): dosen.kolab1@univ.ac.id | Pass: 123456');
-  console.log('Dosen 3 (indep): dosen.kolab2@univ.ac.id | Pass: 123456');
-  console.log('  -> Kelas WEB A (Dosen 1) adalah source/master konten.');
-  console.log('  -> Kelas WEB B (Dosen 2) sudah merged ke WEB A (cross-dosen).');
-  console.log('  -> Kelas WEB C (Dosen 3) masih independent (belum merge).');
-  console.log('  -> Kelas WEB D simulasikan mode EXISTING non-merge dengan konten hidden.');
-  console.log('  -> Coba invalid case: merge kelas WEB dengan ALGO A (harus gagal karena beda mata kuliah).');
-  
-  console.log('\n👤 STUDENT 2 (E-LEARNING ALREADY ACTIVE):');
-  console.log('Email: budi@univ.ac.id | Pass: 123456');
-  console.log('  -> Login as Budi. His KRS terhubung ke kelas WEB B (member class).');
-  console.log('  -> Karena WEB B merged ke WEB A, konten WEB A akan terbaca otomatis.');
-  console.log('  -> Konten dengan isHidden=true tidak tampil ke mahasiswa.');
+  console.log('\n--- USERS ---');
+  console.log(`Lecturer (main/PA):         dosen@univ.ac.id`);
+  console.log(`Lecturer (Web B / Algo A):  dosen.kolab1@univ.ac.id`);
+  console.log(`Lecturer (Web C):           dosen.kolab2@univ.ac.id`);
+  console.log(`Coordinator (Koorprodi):    koor@univ.ac.id`);
+  console.log(`Student (DRAFT KRS):        andi@univ.ac.id`);
+  console.log(`Student (KRS approved, e-learning active): budi@univ.ac.id`);
+  console.log(`Student (Algo C merged to B): citra@univ.ac.id`);
+  console.log(`Student (KHS + Transkrip):  dani@univ.ac.id`);
+  console.log(`Student (KRS rejected):     eva@univ.ac.id`);
 
-  console.log('\n� SKENARIO MERGER DOSEN PENGAMPUH SAMA (KELAS BERBEDA):');
-  console.log('Dosen (master & member): dosen@univ.ac.id | Pass: 123456');
-  console.log('  -> Algo B (master) dan Algo C (member) diajar oleh DOSEN YANG SAMA.');
-  console.log('  -> Algo C di-merge ke Algo B: setupMode=EXISTING, isMergedClass=true.');
-  console.log('  -> Mahasiswa Citra ada di Algo C dan bisa mengakses konten Algo B.');
-  console.log('  -> Untuk test: POST /elearning/setup/merge');
-  console.log('     body: { masterKelasPerkuliahanId: <AlgoB_ID>, memberKelasPerkuliahanIds: [<AlgoC_ID>] }');
-  console.log('  -> Atau gunakan endpoint setup: POST /elearning/setup/class');
-  console.log('     body: { kelasPerkuliahanId: <AlgoC_ID>, setupMode: "EXISTING", sourceKelasPerkuliahanId: <AlgoB_ID>, isMergedClass: true }');
+  console.log('\n--- KRS FLOWS TO TEST ---');
+  console.log('  andi@univ.ac.id   → KRS is DISETUJUI (seeded by extra flow). To retest:');
+  console.log('    1. Manually reset Andi KRS to DRAFT via DELETE or re-seed');
+  console.log('    2. POST /krs/add-class { kelasId: <WebA_ID>, semester: "GENAP" }');
+  console.log('    3. POST /krs/submit');
+  console.log('    4. Login as dosen → PATCH /krs/:id/approve or /krs/:id/reject');
+  console.log('  eva@univ.ac.id    → KRS is DITOLAK. See catatanDosen for rejection reason.');
 
-  console.log('\n👤 STUDENT 3 (MERGE SAME DOSEN):');
-  console.log('Email: citra@univ.ac.id | Pass: 123456');
-  console.log('  -> KRS Citra terhubung ke Algo C (member class).');
-  console.log('  -> Karena Algo C merged ke Algo B, konten Algo B terbaca oleh Citra.');
-  console.log('  -> Dosen yang mengajar SAMA (dosen@univ.ac.id), hanya kelasnya berbeda.');
+  console.log('\n--- E-LEARNING CONTENT (Web A — master) ---');
+  console.log('  GET /elearning/course/<WebA_ID>        → public, no auth, isHidden=false only');
+  console.log('  GET /elearning/course-detail/<WebA_ID> → full detail with submission counts');
+  console.log('  Assignment 1 (Tugas, bobot=20%): Budi=GRADED(90), Dani=UNGRADED');
+  console.log('    → PATCH /elearning/submission/<daniSub1_ID>/grade { "grade": 85, "feedback": "..." }');
+  console.log('  Quiz 1 (Kuis, bobot=10%): Budi=100/100, Dani=50/100');
+  console.log('    → GET /elearning/quiz/<quiz1_ID>/attempts (as dosen)');
+  console.log('  UTS Assignment (bobot=30%), UAS Assignment (bobot=40%): no submissions yet');
 
-  console.log('\n📚 DATA KELAS UNTUK TEST FRONTEND:');
-  console.log(`WEB A ID: ${kelasWebA.id} | Dosen: ${dosen.email}`);
-  console.log(`WEB B ID: ${kelasWebB.id} | Dosen: ${dosenKolab1.email}`);
-  console.log(`WEB C ID: ${kelasWebC.id} | Dosen: ${dosenKolab2.email}`);
-  console.log(`WEB D ID: ${kelasWebD.id} | Dosen: ${dosen.email}`);
-  console.log(`ALGO A ID: ${kelasAlgoA.id} | Dosen: ${dosenKolab1.email}`);
-  console.log(`ALGO B ID: ${kelasAlgoB.id} | Dosen: ${dosen.email} [MASTER MERGE - SAME DOSEN]`);
-  console.log(`ALGO C ID: ${kelasAlgoC.id} | Dosen: ${dosen.email} [MEMBER MERGE - SAME DOSEN]`);
+  console.log('\n--- PARTICIPATION & GRADE ENDPOINTS ---');
+  console.log(`  GET /elearning/kelas/<WebA_ID>/participation  → as dosen (sees Budi+Dani data)`);
+  console.log(`  GET /elearning/kelas/<WebA_ID>/ranking        → as dosen`);
+  console.log(`  GET /elearning/kelas/<WebB_ID>/my-grades      → as budi (reads Web A via merge)`);
+  console.log(`  GET /elearning/kelas/<WebB_ID>/participants   → as budi`);
+  console.log(`  GET /elearning/kelas/<AlgoC_ID>/my-grades     → as citra (reads Algo B via merge)`);
+  console.log(`  GET /elearning/kelas/<AlgoB_ID>/participation → as dosen (sees Citra's data)`);
 
-  console.log('\n👨‍🏫 DOSEN PA (PEMBIMBING AKADEMIK):');
-  console.log('Email: dosen@univ.ac.id | Pass: 123456');
-  console.log('  -> Dosen Dr. Budi Hartono adalah PA untuk semua mahasiswa (Andi, Budi, Citra, Dani).');
-  console.log('  -> GET /academic/pa/mahasiswa → lihat daftar mahasiswa bimbingan');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/semesters → semester tersedia');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/khs?semester=... → lihat KHS');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/khs/download?semester=... → download KHS PDF');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/transkrip → lihat transkrip');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/transkrip/download → download transkrip PDF');
-  console.log('  -> GET /academic/pa/mahasiswa/:id/ringkasan → ringkasan akademik untuk pertimbangan KRS');
-  console.log('-------------------------------\n');
+  console.log('\n--- PRESENSI (ATTENDANCE) ---');
+  console.log(`  Web B open session token : ${tokenWebB1}  (deadline: 24h from now)`);
+  console.log(`  Algo B open session token: ${tokenAlgoB1} (deadline: 12h from now)`);
+  console.log('  POST /presensi/submit { "token": "<TOKEN>" }  → as any enrolled student');
+  console.log('  GET  /presensi/kelas/<WebB_ID>/sessions       → as dosen.kolab1');
+  console.log('  GET  /presensi/session/<sessionId>/attendances → as dosen');
+
+  console.log('\n--- ACADEMIC (PA) ---');
+  console.log('  Login as dosen@univ.ac.id (PA for all students):');
+  console.log('  GET /academic/pa/mahasiswa');
+  console.log('  GET /academic/pa/mahasiswa/<dani_ID>/khs?semester=2023/2024 Ganjil');
+  console.log('  GET /academic/pa/mahasiswa/<dani_ID>/transkrip');
+  console.log('  GET /academic/pa/mahasiswa/<dani_ID>/ringkasan');
+
+  console.log('\n--- CLASS IDs (printed at runtime) ---');
+  console.log(`  Web A ID : ${kelasWebA.id}  | Dosen: dosen@univ.ac.id`);
+  console.log(`  Web B ID : ${kelasWebB.id}  | Dosen: dosen.kolab1@univ.ac.id  [MERGED → Web A]`);
+  console.log(`  Web C ID : ${kelasWebC.id}  | Dosen: dosen.kolab2@univ.ac.id  [independent]`);
+  console.log(`  Web D ID : ${kelasWebD.id}  | Dosen: dosen@univ.ac.id         [clone of Web A]`);
+  console.log(`  Algo A ID: ${kelasAlgoA.id} | Dosen: dosen.kolab1@univ.ac.id  [independent]`);
+  console.log(`  Algo B ID: ${kelasAlgoB.id} | Dosen: dosen@univ.ac.id         [MASTER merge]`);
+  console.log(`  Algo C ID: ${kelasAlgoC.id} | Dosen: dosen@univ.ac.id         [MEMBER → Algo B]`);
+
+  console.log('\n--- SUBMISSION IDs (for grading test) ---');
+  console.log(`  Budi sub Assignment 1 (graded=90):   ${budiSub1.id}`);
+  console.log(`  Dani sub Assignment 1 (ungraded):    ${daniSub1.id}`);
+  console.log(`    → PATCH /elearning/submission/${daniSub1.id}/grade`);
+  console.log('       Body: { "grade": 80, "feedback": "Bagus, perlu perbaikan minor." }');
+  console.log('\n========================================================\n');
 }
 
 main()
