@@ -37,6 +37,12 @@ export class PresensiService {
 
     if (dto.type === SessionType.UAS) {
       if (!dto.kelasPerkuliahanId) throw new BadRequestException('ID Kelas wajib diisi');
+      // Validate Class Owner for UAS: only dosen pemilik kelas boleh buat UAS
+      if (user.role === Role.DOSEN) {
+        const kelas = await this.prisma.kelasPerkuliahan.findUnique({ where: { id: dto.kelasPerkuliahanId }});
+        if (!kelas || kelas.dosenId !== user.id) throw new ForbiddenException('Bukan kelas Anda.');
+      }
+
       const exists = await this.prisma.presensiSession.findFirst({
         where: { kelasPerkuliahanId: dto.kelasPerkuliahanId, type: SessionType.UAS }
       });
@@ -106,7 +112,7 @@ export class PresensiService {
         where: { 
           mahasiswaId: mahasiswa.id, 
           kelasPerkuliahanId: session.kelasPerkuliahanId,
-          status: 'DISETUJUI' 
+          status: StatusKRS.DISETUJUI,
         }
       });
       if (!krs) throw new ForbiddenException('Anda tidak terdaftar di kelas ini.');
