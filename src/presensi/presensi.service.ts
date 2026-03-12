@@ -105,17 +105,23 @@ export class PresensiService {
       );
     }
 
-    return this.prisma.presensiSession.create({
+    const session = await this.prisma.presensiSession.create({
       data: {
         title: dto.title,
         type: dto.type,
         kelasPerkuliahanId: dto.kelasPerkuliahanId || null,
         date: new Date(),
         isOpen: true,
-        token: token, // Save token
-        deadlineAt: deadlineAt, // Save deadline
+        token,
+        deadlineAt,
       },
     });
+
+    return {
+      status: 'success',
+      message: 'Sesi presensi berhasil dibuat.',
+      data: session,
+    };
   }
 
   // ============================================
@@ -167,12 +173,18 @@ export class PresensiService {
       }
     }
 
-    return this.recordAttendance(
+    const record = await this.recordAttendance(
       session.id,
       mahasiswa.id,
       'TOKEN',
       AttendanceStatus.HADIR,
     );
+
+    return {
+      status: 'success',
+      message: 'Presensi berhasil dicatat.',
+      data: record,
+    };
   }
 
   // ============================================
@@ -204,8 +216,7 @@ export class PresensiService {
       throw new NotFoundException('Mahasiswa invalid.');
     }
 
-    // Upsert: Mark method as "MANUAL"
-    return this.prisma.presensiRecord.upsert({
+    const record = await this.prisma.presensiRecord.upsert({
       where: {
         sessionId_mahasiswaId: {
           sessionId: dto.sessionId,
@@ -220,12 +231,18 @@ export class PresensiService {
         status: dto.status,
       },
     });
+
+    return {
+      status: 'success',
+      message: 'Presensi manual berhasil dicatat.',
+      data: record,
+    };
   }
 
   // ============================================
-  // 4. LIST PERTEMUAN PER KELAS (LECTURER)
+  // 4A. LIST SESI PERTEMUAN KELAS (LECTURER)
   // ============================================
-  async getSessionsByClass(kelasId: number, user: User) {
+  async getKelasSessionsByClass(kelasId: number, user: User) {
     if (user.role === Role.MAHASISWA)
       throw new ForbiddenException('Akses ditolak');
 
@@ -238,7 +255,7 @@ export class PresensiService {
       throw new ForbiddenException('Bukan kelas Anda.');
     }
 
-    return this.prisma.presensiSession.findMany({
+    const sessions = await this.prisma.presensiSession.findMany({
       where: { kelasPerkuliahanId: kelasId, type: SessionType.KELAS },
       orderBy: { date: 'asc' },
       select: {
@@ -248,8 +265,79 @@ export class PresensiService {
         isOpen: true,
         token: true,
         type: true,
+        deadlineAt: true,
       },
     });
+
+    return {
+      status: 'success',
+      message: `${sessions.length} sesi pertemuan ditemukan.`,
+      data: sessions,
+    };
+  }
+
+  // ============================================
+  // 4B. SESI UAS PER KELAS (LECTURER)
+  // ============================================
+  async getUASSessionByClass(kelasId: number, user: User) {
+    if (user.role === Role.MAHASISWA)
+      throw new ForbiddenException('Akses ditolak');
+
+    const kelas = await this.prisma.kelasPerkuliahan.findUnique({
+      where: { id: kelasId },
+    });
+    if (!kelas) throw new NotFoundException('Kelas tidak ditemukan');
+
+    if (user.role === Role.DOSEN && kelas.dosenId !== user.id) {
+      throw new ForbiddenException('Bukan kelas Anda.');
+    }
+
+    const session = await this.prisma.presensiSession.findFirst({
+      where: { kelasPerkuliahanId: kelasId, type: SessionType.UAS },
+      select: {
+        id: true,
+        title: true,
+        date: true,
+        isOpen: true,
+        token: true,
+        type: true,
+        deadlineAt: true,
+      },
+    });
+
+    return {
+      status: 'success',
+      message: session ? 'Sesi UAS ditemukan.' : 'Sesi UAS belum dibuat.',
+      data: session ? [session] : [],
+    };
+  }
+
+  // ============================================
+  // 4C. LIST SESI EVENT (DOSEN/ADMIN)
+  // ============================================
+  async getEventSessions(user: User) {
+    if (user.role === Role.MAHASISWA)
+      throw new ForbiddenException('Akses ditolak');
+
+    const sessions = await this.prisma.presensiSession.findMany({
+      where: { type: SessionType.EVENT },
+      orderBy: { date: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        date: true,
+        isOpen: true,
+        token: true,
+        type: true,
+        deadlineAt: true,
+      },
+    });
+
+    return {
+      status: 'success',
+      message: `${sessions.length} sesi event ditemukan.`,
+      data: sessions,
+    };
   }
 
   // ============================================
@@ -283,7 +371,11 @@ export class PresensiService {
     const mahasiswaList = krsList.map((krs) => krs.mahasiswa);
 
     if (!sessionId) {
-      return mahasiswaList;
+      return {
+        status: 'success',
+        message: `${mahasiswaList.length} mahasiswa terdaftar di kelas.`,
+        data: mahasiswaList,
+      };
     }
 
     const records = await this.prisma.presensiRecord.findMany({
@@ -300,10 +392,16 @@ export class PresensiService {
       records.map((record) => [record.mahasiswaId, record]),
     );
 
-    return mahasiswaList.map((mhs) => ({
+    const data = mahasiswaList.map((mhs) => ({
       ...mhs,
       presensi: recordMap.get(mhs.id) || null,
     }));
+
+    return {
+      status: 'success',
+      message: `${data.length} mahasiswa dengan status presensi sesi ini.`,
+      data,
+    };
   }
 
   // ============================================
@@ -334,7 +432,7 @@ export class PresensiService {
       );
     }
 
-    return this.prisma.presensiRecord.findMany({
+    const records = await this.prisma.presensiRecord.findMany({
       where: {
         sessionId,
         ...(method ? { method } : {}),
@@ -351,6 +449,12 @@ export class PresensiService {
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    return {
+      status: 'success',
+      message: `${records.length} data kehadiran pada sesi ini.`,
+      data: records,
+    };
   }
 
   // ============================================
@@ -391,7 +495,94 @@ export class PresensiService {
       where: { sessionId_mahasiswaId: { sessionId, mahasiswaId } },
     });
 
-    return { message: 'Presensi mahasiswa berhasil dibatalkan.' };
+    return {
+      status: 'success',
+      message: 'Presensi mahasiswa berhasil dibatalkan.',
+      data: null,
+    };
+  }
+
+  // ============================================
+  // 8. MAHASISWA: LIHAT PRESENSI SENDIRI DI KELAS
+  //    (TERMASUK TOTAL PRESENSI MERAH/ALPHA)
+  // ============================================
+  async getMyPresensiInClass(kelasId: number, mahasiswa: User) {
+    const krs = await this.prisma.kRS.findFirst({
+      where: {
+        mahasiswaId: mahasiswa.id,
+        status: StatusKRS.DISETUJUI,
+        kelasPerkuliahan: { some: { id: kelasId } },
+      },
+    });
+    if (!krs)
+      throw new ForbiddenException('Anda tidak terdaftar di kelas ini.');
+
+    // Ambil semua sesi KELAS
+    const sessions = await this.prisma.presensiSession.findMany({
+      where: { kelasPerkuliahanId: kelasId, type: SessionType.KELAS },
+      orderBy: { date: 'asc' },
+      select: { id: true, title: true, date: true, isOpen: true },
+    });
+
+    const sessionIds = sessions.map((s) => s.id);
+
+    // Ambil semua record presensi mahasiswa di sesi tersebut
+    const records = await this.prisma.presensiRecord.findMany({
+      where: { mahasiswaId: mahasiswa.id, sessionId: { in: sessionIds } },
+      select: { sessionId: true, status: true, method: true, createdAt: true },
+    });
+
+    const recordMap = new Map(records.map((r) => [r.sessionId, r]));
+
+    // Detail per sesi
+    const detail = sessions.map((session) => {
+      const record = recordMap.get(session.id);
+      return {
+        sessionId: session.id,
+        title: session.title,
+        date: session.date,
+        isOpen: session.isOpen,
+        status: record?.status ?? 'BELUM_ISI',
+        method: record?.method ?? null,
+        absenAt: record?.createdAt ?? null,
+      };
+    });
+
+    // Hitung ringkasan
+    const totalPertemuan = sessions.length;
+    const hadir = detail.filter((d) => d.status === AttendanceStatus.HADIR).length;
+    const alpha = detail.filter((d) => d.status === AttendanceStatus.ALPHA).length;
+    const izin = detail.filter((d) => d.status === AttendanceStatus.IZIN).length;
+    const sakit = detail.filter((d) => d.status === AttendanceStatus.SAKIT).length;
+    const belumIsi = detail.filter((d) => d.status === 'BELUM_ISI').length;
+
+    // Presensi merah = ALPHA (tidak hadir tanpa keterangan)
+    const totalMerah = alpha;
+    const persentaseKehadiran =
+      totalPertemuan > 0
+        ? parseFloat(((hadir / totalPertemuan) * 100).toFixed(1))
+        : 100;
+
+    return {
+      status: 'success',
+      message: 'Data presensi berhasil diambil.',
+      data: [
+        {
+          ringkasan: {
+            totalPertemuan,
+            hadir,
+            alpha,
+            izin,
+            sakit,
+            belumIsi,
+            totalMerah,
+            persentaseKehadiran,
+            statusUAS: persentaseKehadiran >= 80 ? 'BOLEH_UAS' : 'TIDAK_BOLEH_UAS',
+          },
+          detail,
+        },
+      ],
+    };
   }
 
   // --- Helpers ---
