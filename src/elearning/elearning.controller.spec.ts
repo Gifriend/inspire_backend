@@ -53,12 +53,13 @@ describe('ElearningController', () => {
         weekNumber: 1,
         kelasPerkuliahanId: 1,
       };
+      const req = { user: { id: 1, role: 'DOSEN' } };
       
       mockElearningService.createSession.mockResolvedValue({ id: '1', ...dto });
 
-      const result = await controller.createSession(dto);
+      const result = await controller.createSession(dto, req as any);
 
-      expect(service.createSession).toHaveBeenCalledWith(dto);
+      expect(service.createSession).toHaveBeenCalledWith(dto, req.user);
       expect(result).toEqual({ id: '1', ...dto });
     });
   });
@@ -71,9 +72,10 @@ describe('ElearningController', () => {
         fileUrl: 'http://test.com/file.pdf',
         sessionId: 'session-1',
       };
+      const req = { user: { id: 1, role: 'DOSEN' } };
 
-      await controller.createMaterial(dto);
-      expect(service.createMaterial).toHaveBeenCalledWith(dto);
+      await controller.createMaterial(dto, req as any);
+      expect(service.createMaterial).toHaveBeenCalledWith(dto, req.user);
     });
   });
 
@@ -84,9 +86,10 @@ describe('ElearningController', () => {
         studentId: 123,
         textContent: 'Jawaban saya',
       };
+      const req = { user: { id: 123, role: 'MAHASISWA' } };
 
-      await controller.submitAssignment(dto);
-      expect(service.submitAssignment).toHaveBeenCalledWith(dto);
+      await controller.submitAssignment(dto, req as any);
+      expect(service.submitAssignment).toHaveBeenCalledWith(dto, req.user);
     });
   });
 

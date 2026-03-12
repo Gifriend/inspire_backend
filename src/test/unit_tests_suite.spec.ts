@@ -10,6 +10,7 @@ import { PengumumanService } from '../pengumuman/pengumuman.service';
 import { AcademicService } from '../academic/academic.service';
 import { PresensiService } from '../presensi/presensi.service';
 import { KrsService } from '../krs/krs.service';
+import { NotificationService } from '../notification/notification.service';
 
 /**
  * COMPREHENSIVE UNIT TEST SUITE
@@ -553,22 +554,40 @@ describe('ElearningService', () => {
   let service: ElearningService;
   let prisma: PrismaService;
 
+  const mockNotificationService = { sendMulticast: jest.fn() };
+
   const mockPrisma = {
     assignment: { findUnique: jest.fn(), create: jest.fn() },
     submission: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     quiz: { findUnique: jest.fn(), create: jest.fn() },
-    quizAttempt: { create: jest.fn() },
-    session: { create: jest.fn(), findMany: jest.fn() },
-    material: { create: jest.fn() }
+    quizAttempt: { create: jest.fn(), findFirst: jest.fn() },
+    session: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), count: jest.fn() },
+    material: { create: jest.fn() },
+    elearningClassConfig: { findUnique: jest.fn(), findMany: jest.fn() },
+    kRS: { findMany: jest.fn(), findFirst: jest.fn() },
   };
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
-      providers: [ElearningService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        ElearningService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: NotificationService, useValue: mockNotificationService },
+      ],
     }).compile();
     service = module.get<ElearningService>(ElearningService);
     prisma = module.get<PrismaService>(PrismaService);
+    jest.clearAllMocks();
   });
+
+  const mockSessionContext = {
+    id: 'session-1',
+    title: 'Pertemuan 1',
+    kelasPerkuliahanId: 10,
+    kelasPerkuliahan: {
+      mataKuliah: { kode: 'IF101', name: 'Algoritma' },
+    },
+  };
 
   it('WB-EL-01: Submit Assignment Failed (Deadline Passed)', async () => {
     const mhs = { id: 1, role: Role.MAHASISWA } as any;
@@ -608,6 +627,8 @@ describe('ElearningService', () => {
     const mhs = { id: 1, role: Role.MAHASISWA } as any;
     const mockQuiz = {
       id: 'q1',
+      startTime: new Date(Date.now() - 60_000),
+      endTime: new Date(Date.now() + 60_000),
       questions: [
         { id: '1', correctAnswer: 'A', points: 50 },
         { id: '2', correctAnswer: 'B', points: 50 }
@@ -626,6 +647,7 @@ describe('ElearningService', () => {
   });
 
   it('WB-EL-05: Create Session Success', async () => {
+    const dosen = { id: 2, role: Role.DOSEN } as any;
     const dto = { 
       title: 'Week 1', 
       description: 'Introduction',
@@ -635,7 +657,7 @@ describe('ElearningService', () => {
 
     mockPrisma.session.create.mockResolvedValue({ id: 'session-1', ...dto });
 
-    const result = await service.createSession(dto);
+  const result = await service.createSession(dto, dosen);
     
     expect(result).toBeDefined();
     expect(result.title).toBe('Week 1');
@@ -650,6 +672,10 @@ describe('ElearningService', () => {
       sessionId: 'session-1'
     };
 
+    mockPrisma.session.findUnique.mockResolvedValue(mockSessionContext);
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.elearningClassConfig.findMany.mockResolvedValue([]);
+    mockPrisma.kRS.findMany.mockResolvedValue([]);
     mockPrisma.material.create.mockResolvedValue({ id: 'mat-1', ...dto });
 
     const result = await service.createMaterial(dto, dosen);
@@ -667,6 +693,10 @@ describe('ElearningService', () => {
       sessionId: 'session-1'
     };
 
+    mockPrisma.session.findUnique.mockResolvedValue(mockSessionContext);
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.elearningClassConfig.findMany.mockResolvedValue([]);
+    mockPrisma.kRS.findMany.mockResolvedValue([]);
     mockPrisma.material.create.mockResolvedValue({ id: 'mat-1', ...dto });
 
     const result = await service.createMaterial(dto, dosen);
@@ -676,6 +706,7 @@ describe('ElearningService', () => {
   });
 
   it('WB-EL-08: Create Assignment Success', async () => {
+    const dosen = { id: 2, role: Role.DOSEN } as any;
     const dto = { 
       title: 'Tugas 1',
       description: 'Kerjakan soal berikut',
@@ -683,9 +714,17 @@ describe('ElearningService', () => {
       sessionId: 'session-1'
     };
 
-    mockPrisma.assignment.create.mockResolvedValue({ id: 'assign-1' });
+    mockPrisma.session.findUnique.mockResolvedValue(mockSessionContext);
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.elearningClassConfig.findMany.mockResolvedValue([]);
+    mockPrisma.kRS.findMany.mockResolvedValue([]);
+    mockPrisma.assignment.create.mockResolvedValue({
+      id: 'assign-1',
+      title: dto.title,
+      deadline: new Date(dto.deadline),
+    });
 
-    const result = await service.createAssignment(dto);
+    const result = await service.createAssignment(dto, dosen);
     
     expect(result).toBeDefined();
   });
@@ -707,6 +746,7 @@ describe('ElearningService', () => {
   });
 
   it('WB-EL-10: Create Quiz with Questions', async () => {
+    const dosen = { id: 2, role: Role.DOSEN } as any;
     const dto = { 
       title: 'Kuis 1',
       duration: 60,
@@ -719,9 +759,19 @@ describe('ElearningService', () => {
       ]
     };
 
-    mockPrisma.quiz.create.mockResolvedValue({ id: 'quiz-1', questions: dto.questions });
+    mockPrisma.session.findUnique.mockResolvedValue(mockSessionContext);
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.elearningClassConfig.findMany.mockResolvedValue([]);
+    mockPrisma.kRS.findMany.mockResolvedValue([]);
+    mockPrisma.quiz.create.mockResolvedValue({
+      id: 'quiz-1',
+      title: dto.title,
+      startTime: new Date(dto.startTime),
+      endTime: new Date(dto.endTime),
+      questions: dto.questions,
+    });
 
-    const result = await service.createQuiz(dto);
+    const result = await service.createQuiz(dto, dosen);
     
     expect(result).toBeDefined();
     expect(result.questions).toHaveLength(1);
@@ -731,6 +781,8 @@ describe('ElearningService', () => {
     const mhs = { id: 1, role: Role.MAHASISWA } as any;
     const mockQuiz = {
       id: 'q1',
+      startTime: new Date(Date.now() - 60_000),
+      endTime: new Date(Date.now() + 60_000),
       questions: [
         { id: '1', correctAnswer: 'A', points: 50 },
         { id: '2', correctAnswer: 'B', points: 50 }
@@ -755,6 +807,8 @@ describe('ElearningService', () => {
     const mhs = { id: 1, role: Role.MAHASISWA } as any;
     const mockQuiz = {
       id: 'q1',
+      startTime: new Date(Date.now() - 60_000),
+      endTime: new Date(Date.now() + 60_000),
       questions: [
         { id: '1', correctAnswer: 'A', points: 40 },
         { id: '2', correctAnswer: 'B', points: 30 },
@@ -778,6 +832,8 @@ describe('ElearningService', () => {
   });
 
   it('WB-EL-13: Get Course Content', async () => {
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.session.count.mockResolvedValue(1);
     mockPrisma.session.findMany.mockResolvedValue([
       { id: 'session-1', weekNumber: 1, materials: [], assignments: [], quizzes: [] }
     ]);
@@ -793,6 +849,41 @@ describe('ElearningService', () => {
 
     await expect(service.submitQuiz({ quizId: 'q1', answers: [] }, dosen))
       .rejects.toThrow(ForbiddenException);
+  });
+
+  it('WB-EL-15: Notify Students on New Assignment', async () => {
+    const dosen = { id: 2, role: Role.DOSEN } as any;
+    const dto = {
+      title: 'Tugas Notif',
+      description: 'Latihan',
+      deadline: '2026-03-20T10:00:00Z',
+      sessionId: 'session-1',
+    };
+
+    mockPrisma.assignment.create.mockResolvedValue({
+      id: 'assign-1',
+      title: dto.title,
+      deadline: new Date(dto.deadline),
+    });
+    mockPrisma.session.findUnique.mockResolvedValue(mockSessionContext);
+    mockPrisma.elearningClassConfig.findUnique.mockResolvedValue(null);
+    mockPrisma.elearningClassConfig.findMany.mockResolvedValue([
+      { kelasPerkuliahanId: 10 },
+      { kelasPerkuliahanId: 11 },
+    ]);
+    mockPrisma.kRS.findMany.mockResolvedValue([
+      { mahasiswa: { fcmToken: 'token-1' } },
+      { mahasiswa: { fcmToken: 'token-1' } },
+      { mahasiswa: { fcmToken: 'token-2' } },
+    ]);
+
+    await service.createAssignment(dto, dosen);
+
+    expect(mockNotificationService.sendMulticast).toHaveBeenCalledWith(
+      ['token-1', 'token-2'],
+      expect.stringContaining('TUGAS baru'),
+      expect.stringContaining('IF101 - Algoritma'),
+    );
   });
 });
 

@@ -16,10 +16,14 @@ import {
 } from './dto/elearning.dto';
 import { ElearningSetupMode, Role, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class ElearningService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   /**
    * Jika kelas sudah punya ElearningClassConfig mode NEW (bukan merged)
@@ -66,6 +70,115 @@ export class ElearningService {
     return kelasPerkuliahanId;
   }
 
+  private async getElearningNotificationContext(sessionId: string) {
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        kelasPerkuliahan: {
+          include: {
+            mataKuliah: {
+              select: {
+                kode: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Sesi e-learning tidak ditemukan');
+    }
+
+    const sourceKelasId = await this.resolveEffectiveKelasId(
+      session.kelasPerkuliahanId,
+    );
+
+    const sharedConfigs = await this.prisma.elearningClassConfig.findMany({
+      where: {
+        OR: [
+          { kelasPerkuliahanId: sourceKelasId },
+          {
+            sourceKelasPerkuliahanId: sourceKelasId,
+            isMergedClass: true,
+          },
+        ],
+      },
+      select: {
+        kelasPerkuliahanId: true,
+      },
+    });
+
+    const targetKelasIds = Array.from(
+      new Set([
+        sourceKelasId,
+        session.kelasPerkuliahanId,
+        ...sharedConfigs.map((config) => config.kelasPerkuliahanId),
+      ]),
+    );
+
+    const enrollments = await this.prisma.kRS.findMany({
+      where: {
+        status: 'DISETUJUI',
+        kelasPerkuliahan: {
+          some: {
+            id: { in: targetKelasIds },
+          },
+        },
+        mahasiswa: {
+          fcmToken: { not: null },
+        },
+      },
+      select: {
+        mahasiswa: {
+          select: {
+            fcmToken: true,
+          },
+        },
+      },
+    });
+
+    const tokens = Array.from(
+      new Set(
+        enrollments
+          .map((enrollment) => enrollment.mahasiswa.fcmToken)
+          .filter((token): token is string => !!token),
+      ),
+    );
+
+    return {
+      session,
+      tokens,
+    };
+  }
+
+  private async notifyStudentsAboutElearningContent(
+    sessionId: string,
+    contentType: 'materi' | 'tugas' | 'kuis',
+    contentTitle: string,
+    extraBody?: string,
+  ) {
+    const { session, tokens } = await this.getElearningNotificationContext(
+      sessionId,
+    );
+
+    if (!tokens.length) {
+      return;
+    }
+
+    const courseLabel = `${session.kelasPerkuliahan.mataKuliah.kode} - ${session.kelasPerkuliahan.mataKuliah.name}`;
+    const body = extraBody
+      ? `${courseLabel}. ${extraBody}`
+      : `${courseLabel}. ${session.title}`;
+
+    await this.notificationService.sendMulticast(
+      tokens,
+      `${contentType.toUpperCase()} baru: ${contentTitle}`,
+      body,
+    );
+  }
+
   // 1. Create Session/Meeting
   async createSession(data: CreateSessionDto, user: User) {
     if (user.role !== Role.DOSEN) {
@@ -102,7 +215,7 @@ export class ElearningService {
       );
     }
 
-    return this.prisma.material.create({
+    const material = await this.prisma.material.create({
       data: {
         title: data.title,
         type: data.type,
@@ -111,6 +224,19 @@ export class ElearningService {
         sessionId: data.sessionId,
       },
     });
+
+    try {
+      await this.notifyStudentsAboutElearningContent(
+        data.sessionId,
+        'materi',
+        material.title,
+        `Materi baru ditambahkan pada ${material.type === 'TEXT' ? 'konten teks' : 'sesi pembelajaran'} ${material.title}.`,
+      );
+    } catch (error) {
+      console.error('Gagal mengirim notifikasi materi e-learning:', error);
+    }
+
+    return material;
   }
 
   // 3. Create Assignment
@@ -118,7 +244,7 @@ export class ElearningService {
     if (user.role !== Role.DOSEN) {
       throw new ForbiddenException('Hanya dosen yang dapat membuat tugas');
     }
-    return this.prisma.assignment.create({
+    const assignment = await this.prisma.assignment.create({
       data: {
         title: data.title,
         description: data.description,
@@ -128,6 +254,19 @@ export class ElearningService {
         bobot: data.bobot ?? 0,
       },
     });
+
+    try {
+      await this.notifyStudentsAboutElearningContent(
+        data.sessionId,
+        'tugas',
+        assignment.title,
+        `Deadline ${new Date(assignment.deadline).toLocaleString('id-ID')}.`,
+      );
+    } catch (error) {
+      console.error('Gagal mengirim notifikasi tugas e-learning:', error);
+    }
+
+    return assignment;
   }
 
   // 4. Student Submits Assignment
@@ -209,7 +348,7 @@ export class ElearningService {
       } as any;
     });
 
-    return this.prisma.quiz.create({
+    const quiz = await this.prisma.quiz.create({
       data: {
         title: data.title,
         duration: data.duration,
@@ -223,6 +362,19 @@ export class ElearningService {
       },
       include: { questions: true },
     });
+
+    try {
+      await this.notifyStudentsAboutElearningContent(
+        data.sessionId,
+        'kuis',
+        quiz.title,
+        `Kuis tersedia dari ${new Date(quiz.startTime).toLocaleString('id-ID')} sampai ${new Date(quiz.endTime).toLocaleString('id-ID')}.`,
+      );
+    } catch (error) {
+      console.error('Gagal mengirim notifikasi kuis e-learning:', error);
+    }
+
+    return quiz;
   }
 
   // 6. Submit Quiz (Calculate Score) - NEW FEATURE
