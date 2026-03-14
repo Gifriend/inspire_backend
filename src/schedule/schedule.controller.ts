@@ -33,7 +33,7 @@ export class ScheduleController {
     const now = new Date();
     const year = query.year ? parseInt(query.year) : now.getFullYear();
     const month = query.month ? parseInt(query.month) : now.getMonth() + 1;
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = process.env.BASE_URL || `localhost:${process.env.PORT ?? 3333}`;
     return this.scheduleService.getMonthlySchedule(user.id, year, month, baseUrl);
   }
 
@@ -46,7 +46,7 @@ export class ScheduleController {
     @CurrentUser() user: User,
     @Req() req: Request,
   ) {
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = process.env.BASE_URL || `localhost:${process.env.PORT ?? 3333}`;
     return this.scheduleService.getTodaySchedule(user.id, baseUrl);
   }
 

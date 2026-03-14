@@ -1175,6 +1175,196 @@ async function main() {
   }
 
   // ==========================================
+  // 10. RIWAYAT PRESENSI LENGKAP (HISTORY)
+  //   Covers:
+  //   - GET /presensi/my/kelas/:kelasId     → mahasiswa lihat riwayat sendiri
+  //   - GET /presensi/session/:id/attendances → dosen lihat siapa yang hadir
+  //   - GET /presensi/kelas/:id/mahasiswa?sessionId=xxx → dosen lihat status per mahasiswa
+  // ==========================================
+  console.log('📋 Creating presensi history (riwayat)...');
+
+  // --- WEB A: Pertemuan 2-6 (kelasWebA, dosen@univ.ac.id) ---
+  // Enrolled students: Dani (from sem3 KRS) + Andi (enrolled via extra flow above)
+
+  const webARwSess2 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 2 - HTML & CSS Dasar',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.createMany({
+    data: [
+      { sessionId: webARwSess2.id, mahasiswaId: daniTranskrip.id, method: 'TOKEN', status: 'HADIR' },
+      { sessionId: webARwSess2.id, mahasiswaId: andiBlank.id, method: 'TOKEN', status: 'HADIR' },
+    ],
+  });
+
+  const webARwSess3 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 3 - JavaScript Dasar',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.createMany({
+    data: [
+      // Dani IZIN (Surat Izin), Andi HADIR via token
+      { sessionId: webARwSess3.id, mahasiswaId: daniTranskrip.id, method: 'MANUAL', status: 'IZIN' },
+      { sessionId: webARwSess3.id, mahasiswaId: andiBlank.id, method: 'TOKEN', status: 'HADIR' },
+    ],
+  });
+
+  const webARwSess4 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 4 - DOM Manipulation',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.createMany({
+    data: [
+      { sessionId: webARwSess4.id, mahasiswaId: daniTranskrip.id, method: 'TOKEN', status: 'HADIR' },
+      // Andi ALPHA (absent without reason — dosen manually marks ALPHA)
+      { sessionId: webARwSess4.id, mahasiswaId: andiBlank.id, method: 'MANUAL', status: 'ALPHA' },
+    ],
+  });
+
+  const webARwSess5 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 5 - Fetch API & AJAX',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 12 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.createMany({
+    data: [
+      // Dani SAKIT (surat dokter), Andi hadir
+      { sessionId: webARwSess5.id, mahasiswaId: daniTranskrip.id, method: 'MANUAL', status: 'SAKIT' },
+      { sessionId: webARwSess5.id, mahasiswaId: andiBlank.id, method: 'TOKEN', status: 'HADIR' },
+    ],
+  });
+
+  // Pertemuan 6 Web A: OPEN — students can still submit
+  const tokenWebA6 = generateToken(8);
+  await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 6 - React.js Intro',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebA.id,
+      date: new Date(), isOpen: true,
+      token: tokenWebA6,
+      deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    },
+  });
+
+  // --- WEB B: Pertemuan 2-5 (kelasWebB, dosen.kolab1@univ.ac.id) ---
+  // Enrolled student: Budi only
+  // Use: GET /presensi/my/kelas/<WebB_ID> as budi → lihat riwayat
+  //      GET /presensi/session/<id>/attendances as dosen.kolab1 → lihat daftar hadir
+
+  const webBRwSess2 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 2 - Styling & Responsive Design',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebB.id,
+      date: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.create({
+    data: { sessionId: webBRwSess2.id, mahasiswaId: budiActive.id, method: 'TOKEN', status: 'HADIR' },
+  });
+
+  const webBRwSess3 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 3 - JavaScript Events',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebB.id,
+      date: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.create({
+    data: { sessionId: webBRwSess3.id, mahasiswaId: budiActive.id, method: 'MANUAL', status: 'IZIN' },
+  });
+
+  const webBRwSess4 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 4 - Async Programming',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebB.id,
+      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.create({
+    data: { sessionId: webBRwSess4.id, mahasiswaId: budiActive.id, method: 'MANUAL', status: 'SAKIT' },
+  });
+
+  // Pertemuan 5 Web B: OPEN — Budi can still check in
+  const tokenWebB5 = generateToken(8);
+  await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 5 - Framework Introduction',
+      type: 'KELAS', kelasPerkuliahanId: kelasWebB.id,
+      date: new Date(), isOpen: true,
+      token: tokenWebB5,
+      deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    },
+  });
+
+  // --- ALGO C: Pertemuan 1-3 (kelasAlgoC, dosen@univ.ac.id) ---
+  // Enrolled student: Citra only
+  // Use: GET /presensi/my/kelas/<AlgoC_ID> as citra
+
+  const algoCRwSess1 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 1 - Pengantar Algoritma',
+      type: 'KELAS', kelasPerkuliahanId: kelasAlgoC.id,
+      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.presensiRecord.create({
+    data: { sessionId: algoCRwSess1.id, mahasiswaId: citraAlgo.id, method: 'TOKEN', status: 'HADIR' },
+  });
+
+  const algoCRwSess2 = await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 2 - Kompleksitas Waktu & Ruang',
+      type: 'KELAS', kelasPerkuliahanId: kelasAlgoC.id,
+      date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      isOpen: false, token: generateToken(8),
+      deadlineAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    },
+  });
+  // Citra ALPHA — explicitly recorded by dosen
+  await prisma.presensiRecord.create({
+    data: { sessionId: algoCRwSess2.id, mahasiswaId: citraAlgo.id, method: 'MANUAL', status: 'ALPHA' },
+  });
+
+  // Pertemuan 3 Algo C: OPEN session, BELUM_ISI (no record yet)
+  const tokenAlgoC3 = generateToken(8);
+  await prisma.presensiSession.create({
+    data: {
+      title: 'Pertemuan 3 - Array dan Sorting',
+      type: 'KELAS', kelasPerkuliahanId: kelasAlgoC.id,
+      date: new Date(), isOpen: true,
+      token: tokenAlgoC3,
+      deadlineAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+    },
+  });
+
+  // ==========================================
   // SUMMARY
   // ==========================================
   console.log('\n✅ Seeding Complete!');
@@ -1219,11 +1409,24 @@ async function main() {
   console.log(`  GET /elearning/kelas/<AlgoB_ID>/participation → as dosen (sees Citra's data)`);
 
   console.log('\n--- PRESENSI (ATTENDANCE) ---');
-  console.log(`  Web B open session token : ${tokenWebB1}  (deadline: 24h from now)`);
-  console.log(`  Algo B open session token: ${tokenAlgoB1} (deadline: 12h from now)`);
+  console.log(`  Web B open session 1 token : ${tokenWebB1}  (deadline: 24h from now)`);
+  console.log(`  Algo B open session 1 token: ${tokenAlgoB1} (deadline: 12h from now)`);
+  console.log(`  Web A open session 6 token : ${tokenWebA6}  (deadline: 2h from now)`);
+  console.log(`  Web B open session 5 token : ${tokenWebB5}  (deadline: 2h from now)`);
+  console.log(`  Algo C open session 3 token: ${tokenAlgoC3} (deadline: 3h from now)`);
   console.log('  POST /presensi/submit { "token": "<TOKEN>" }  → as any enrolled student');
-  console.log('  GET  /presensi/kelas/<WebB_ID>/sessions       → as dosen.kolab1');
+  console.log('  GET  /presensi/kelas/<WebB_ID>/sessions/kelas → as dosen.kolab1');
   console.log('  GET  /presensi/session/<sessionId>/attendances → as dosen');
+
+  console.log('\n--- RIWAYAT PRESENSI (HISTORY) ---');
+  console.log('  Mahasiswa lihat presensi sendiri:');
+  console.log('  GET /presensi/my/kelas/<WebA_ID>   → as dani@univ.ac.id  (HADIR,IZIN,HADIR,SAKIT + 2 open)');
+  console.log('  GET /presensi/my/kelas/<WebA_ID>   → as andi@univ.ac.id  (HADIR,HADIR,ALPHA,HADIR + 2 open)');
+  console.log('  GET /presensi/my/kelas/<WebB_ID>   → as budi@univ.ac.id  (HADIR,HADIR,IZIN,SAKIT + 1 open)');
+  console.log('  GET /presensi/my/kelas/<AlgoC_ID>  → as citra@univ.ac.id (HADIR,ALPHA + 1 open)');
+  console.log('  Dosen lihat mahasiswa yang sudah presensi per sesi:');
+  console.log(`  GET /presensi/kelas/<WebA_ID>/mahasiswa?sessionId=<id>   → as dosen (shows Dani+Andi status)`);
+  console.log(`  GET /presensi/session/<WebA_sess2_id>/attendances         → as dosen (Dani+Andi HADIR)`);
 
   console.log('\n--- ACADEMIC (PA) ---');
   console.log('  Login as dosen@univ.ac.id (PA for all students):');

@@ -1,22 +1,20 @@
 import * as admin from 'firebase-admin';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as path from 'path';
 
 @Injectable()
-export class NotificationService implements OnModuleInit {
-  onModuleInit() {
-    // Inisialisasi Firebase Admin 
+export class NotificationService {
+  // Firebase is initialized lazily on first use — avoids blocking startup with
+  // a network round-trip to Google's auth servers during onModuleInit.
+  private ensureFirebase() {
     if (admin.apps.length === 0) {
       const serviceAccountPath = path.join(
         process.cwd(),
         'my-first-project-cdcf3-firebase-adminsdk-fbsvc-66a48d45fa.json',
       );
-
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccountPath),
       });
-
-      // console.log('✅ Firebase Admin SDK initialized successfully');
     }
   }
 
@@ -33,6 +31,8 @@ export class NotificationService implements OnModuleInit {
       console.log('⚠️ No valid FCM tokens found');
       return;
     }
+
+    this.ensureFirebase();
 
     try {
       const response = await admin.messaging().sendEachForMulticast({
